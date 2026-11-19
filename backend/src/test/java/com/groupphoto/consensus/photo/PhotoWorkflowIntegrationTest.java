@@ -1,0 +1,227 @@
+package com.groupphoto.consensus.photo;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.groupphoto.consensus.authorization.ConsentService;
+import com.groupphoto.consensus.authorization.Publications.Purpose;
+import com.groupphoto.consensus.authorization.Publications.Reason;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.file.Path;
+import java.util.Arrays;
+import javax.imageio.ImageIO;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+
+@SpringBootTest(properties = {
+        "app.bootstrap.organizer-token=photo_organizer_integration_test_only",
+        "app.bootstrap.participant-token=photo_participant_integration_test_only"
+})
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+class PhotoWorkflowIntegrationTest {
+    private static final String ORGANIZER = "Bearer photo_organizer_integration_test_only";
+    private static final String PARTICIPANT = "Bearer photo_participant_integration_test_only";
+
+    @TempDir
+    static Path storage;
+
+    @DynamicPropertySource
+    static void photoDirectory(DynamicPropertyRegistry registry) {
+        registry.add("app.photo.root", () -> storage.toString());
+    }
+
+    @Autowired
+    private MockMvc mvc;
+    @Autowired
+    private ObjectMapper json;
+    @Autowired
+    private JdbcTemplate jdbc;
+    @Autowired
+    private ConsentService consents;
+
+    @Test
+    void validatesUploadAndServesThumbnailOnlyInItsMemberActivity() throws Exception {
+        String eventId = createEvent("Storage", false);
+        String photos = photosAt(eventId);
+        mvc.perform(get(photos)).andExpect(status().isUnauthorized());
+        mvc.perform(multipart(photos).file(image("png"))
+                        .header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isForbidden());
+        mvc.perform(multipart(photos)
+                        .file(new MockMultipartFile("file", "fake.png", "image/png", new byte[]{1, 2, 3}))
+                        .header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isUnsupportedMediaType());
+        mvc.perform(multipart(photos)
+                        .file(new MockMultipartFile("file", "big.png", "image/png", new byte[8 * 1024 * 1024 + 1]))
+                        .header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isPayloadTooLarge());
+
+        JsonNode uploaded = upload(eventId, "jpeg");
+        String thumbnail = uploaded.required("thumbnailUrl").asText();
+        mvc.perform(get(thumbnail).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isForbidden());
+        String other = createEvent("Other activity", true);
+        mvc.perform(get(thumbnail.replace(eventId, other)).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isNotFound());
+        addParticipant(eventId);
+        byte[] thumbnailBytes = mvc.perform(get(thumbnail).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_PNG))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
+                .andReturn().getResponse().getContentAsByteArray();
+        BufferedImage resized = ImageIO.read(new ByteArrayInputStream(thumbnailBytes));
+        assertThat(resized.getWidth()).isEqualTo(320);
+        assertThat(resized.getHeight()).isEqualTo(160);
+        mvc.perform(get(photos).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].photoVersionId").value(uploaded.required("photoVersionId").asText()))
+                .andExpect(jsonPath("$[0].rosterConfirmed").value(false));
+    }
+
+    @Test
+    void keepsPreferenceSeparateAndInvalidatesConsentOnRosterChange() throws Exception {
+        String eventId = createEvent("People", true);
+        JsonNode uploaded = upload(eventId, "png");
+        String photoId = uploaded.required("photoId").asText();
+        String versionId = uploaded.required("photoVersionId").asText();
+        String photo = photosAt(eventId) + "/" + photoId;
+        String preferences = photo + "/preferences/me";
+        String consent = photo + "/consents/me";
+        String subjects = photo + "/versions/" + versionId + "/subjects";
+
+        assertEligibility(eventId, photoId, versionId, Purpose.PUBLIC_POST, Reason.ROSTER_UNCONFIRMED);
+        mvc.perform(put(preferences).header(HttpHeaders.AUTHORIZATION, PARTICIPANT)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.createObjectNode().put("photoVersionId", versionId).put("value", 1).toString()))
+                .andExpect(status().isNoContent());
+        mvc.perform(get(preferences).param("photoVersionId", versionId)
+                        .header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.value").value(1));
+        assertEligibility(eventId, photoId, versionId, Purpose.PUBLIC_POST, Reason.ROSTER_UNCONFIRMED);
+        setSubjects(subjects, ORGANIZER, 0, "organizer", "not_a_member")
+                .andExpect(status().isBadRequest());
+        setSubjects(subjects, PARTICIPANT, 0, "participant")
+                .andExpect(status().isForbidden());
+        setSubjects(subjects, ORGANIZER, 0, "participant")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subjectRevision").value(1));
+        setSubjects(subjects, ORGANIZER, 1, "participant")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subjectRevision").value(1));
+        mvc.perform(get(subjects).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userIds[0]").value("participant"));
+        assertEligibility(eventId, photoId, versionId, Purpose.PUBLIC_POST, Reason.CONSENT_PENDING);
+        setConsent(consent, ORGANIZER, versionId, 1, "PUBLIC_POST", "ALLOW")
+                .andExpect(status().isForbidden());
+        setConsent(consent, PARTICIPANT, versionId, 1, "PUBLIC_POST", "ALLOW")
+                .andExpect(status().isNoContent());
+        assertEligibility(eventId, photoId, versionId, Purpose.PUBLIC_POST, Reason.ELIGIBLE);
+        assertEligibility(eventId, photoId, versionId, Purpose.INTERNAL_SHARE, Reason.CONSENT_PENDING);
+        setConsent(consent, PARTICIPANT, versionId, 1, "PUBLIC_POST", "DENY")
+                .andExpect(status().isNoContent());
+        assertEligibility(eventId, photoId, versionId, Purpose.PUBLIC_POST, Reason.CONSENT_DENIED);
+
+        setSubjects(subjects, ORGANIZER, 1, "participant", "organizer")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subjectRevision").value(2));
+        setConsent(consent, PARTICIPANT, versionId, 1, "PUBLIC_POST", "ALLOW")
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+        mvc.perform(get(consent).param("photoVersionId", versionId).param("purpose", "PUBLIC_POST")
+                        .header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.subjectRevision").value(2))
+                .andExpect(jsonPath("$.decision").value("PENDING"))
+                .andExpect(jsonPath("$.canDecide").value(true));
+        assertEligibility(eventId, photoId, versionId, Purpose.PUBLIC_POST, Reason.CONSENT_PENDING);
+        assertThat(jdbc.queryForObject("""
+                SELECT decision FROM photo_consents WHERE photo_version_id = ? AND subject_revision = 1
+                """, String.class, versionId)).isEqualTo("DENY");
+    }
+
+    private void assertEligibility(String eventId, String photoId, String versionId, Purpose purpose, Reason result) {
+        var eligibility = consents.evaluateForRecommendation(eventId, photoId, versionId, "organizer", purpose);
+        assertThat(eligibility.reason()).isEqualTo(result);
+        assertThat(eligibility.eligible()).isEqualTo(result == Reason.ELIGIBLE);
+    }
+
+    private ResultActions setSubjects(String target, String token, long revision, String... users) throws Exception {
+        var body = json.createObjectNode().put("subjectRevision", revision);
+        Arrays.stream(users).forEach(body.putArray("userIds")::add);
+        return mvc.perform(put(target).header(HttpHeaders.AUTHORIZATION, token)
+                .contentType(MediaType.APPLICATION_JSON).content(body.toString()));
+    }
+
+    private ResultActions setConsent(String target, String token,
+            String versionId, long revision, String purpose, String decision) throws Exception {
+        var body = json.createObjectNode().put("photoVersionId", versionId).put("subjectRevision", revision)
+                .put("purpose", purpose).put("decision", decision);
+        return mvc.perform(put(target).header(HttpHeaders.AUTHORIZATION, token)
+                .contentType(MediaType.APPLICATION_JSON).content(body.toString()));
+    }
+
+    private String createEvent(String name, boolean includeParticipant) throws Exception {
+        String response = mvc.perform(post("/api/events").header(HttpHeaders.AUTHORIZATION, ORGANIZER)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.createObjectNode().put("name", name).put("desiredPhotoCount", 1).toString()))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String id = json.readTree(response).required("id").asText();
+        if (includeParticipant) {
+            addParticipant(id);
+        }
+        return id;
+    }
+
+    private void addParticipant(String eventId) throws Exception {
+        mvc.perform(post("/api/events/{id}/members", eventId).header(HttpHeaders.AUTHORIZATION, ORGANIZER)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"userId\":\"participant\"}"))
+                .andExpect(status().isNoContent());
+    }
+
+    private JsonNode upload(String eventId, String format) throws Exception {
+        String body = mvc.perform(multipart(photosAt(eventId)).file(image(format))
+                        .header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.subjectRevision").value(0))
+                .andExpect(jsonPath("$.rosterConfirmed").value(false))
+                .andReturn().getResponse().getContentAsString();
+        return json.readTree(body);
+    }
+
+    private static String photosAt(String eventId) {
+        return "/api/events/" + eventId + "/photos";
+    }
+
+    private static MockMultipartFile image(String format) throws Exception {
+        var output = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(640, 320, BufferedImage.TYPE_INT_RGB), format, output);
+        return new MockMultipartFile("file", "synthetic." + format, "image/" + format, output.toByteArray());
+    }
+}

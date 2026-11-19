@@ -1,7 +1,6 @@
 .git
-.env
-.env.*
-!.env.example
+**/.env
+**/.env.*
 .cache
 .tools
 **/node_modules
@@ -11,3 +10,4 @@
 **/*.log
 uploads
 exports
+data

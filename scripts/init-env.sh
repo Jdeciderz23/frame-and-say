@@ -10,7 +10,9 @@ const password = () => randomBytes(24).toString('hex');
 const template = readFileSync('.env.example', 'utf8')
   .replace('replace-with-local-random-password', password())
   .replace('replace-with-another-local-random-password', password())
-  .replace('replace-with-local-random-password', password());
+  .replace('replace-with-local-random-password', password())
+  .replace('APP_BOOTSTRAP_ORGANIZER_TOKEN=\n', `APP_BOOTSTRAP_ORGANIZER_TOKEN=${password()}\n`)
+  .replace('APP_BOOTSTRAP_PARTICIPANT_TOKEN=\n', `APP_BOOTSTRAP_PARTICIPANT_TOKEN=${password()}\n`);
 try {
   writeFileSync('.env', template, { flag: 'wx', mode: 0o600 });
   console.log('Created untracked .env with local random passwords. Existing files are never overwritten.');

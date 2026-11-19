@@ -1,9 +1,9 @@
 <template>
   <a class="skip-link" href="#main-content">跳到主要内容</a>
   <header class="site-header">
-    <RouterLink to="/" class="brand" aria-label="合照都满意首页">
+    <RouterLink to="/" class="brand" aria-label="照有商量首页">
       <span class="brand-icon" aria-hidden="true"><span></span><span></span></span>
-      <span>合照都满意<small>GROUP PHOTO CONSENSUS</small></span>
+      <span>照有商量<small>FRAME &amp; SAY</small></span>
     </RouterLink>
     <nav aria-label="主导航">
       <RouterLink to="/" class="nav-link">项目首页</RouterLink>

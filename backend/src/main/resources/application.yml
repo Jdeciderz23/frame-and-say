@@ -5,6 +5,22 @@ spring:
     default: demo
   jackson:
     time-zone: UTC
+    deserialization:
+      fail-on-unknown-properties: true
+      fail-on-numbers-for-enums: true
+      accept-float-as-int: false
+  mvc:
+    problemdetails:
+      enabled: true
+  servlet:
+    multipart:
+      max-file-size: 8MB
+      max-request-size: 9MB
+
+app:
+  bootstrap:
+    organizer-token: ${APP_BOOTSTRAP_ORGANIZER_TOKEN:}
+    participant-token: ${APP_BOOTSTRAP_PARTICIPANT_TOKEN:}
 
 server:
   address: ${SERVER_ADDRESS:127.0.0.1}

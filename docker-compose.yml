@@ -30,8 +30,19 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-group_photo}
       MYSQL_USER: ${MYSQL_USER:-group_photo}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Run scripts/init-env.sh first}
+      APP_BOOTSTRAP_ORGANIZER_TOKEN: ${APP_BOOTSTRAP_ORGANIZER_TOKEN:-}
+      APP_BOOTSTRAP_PARTICIPANT_TOKEN: ${APP_BOOTSTRAP_PARTICIPANT_TOKEN:-}
+      APP_PHOTO_DIR: /app/data/photos
     ports:
       - "127.0.0.1:${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - photo-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
     depends_on:
       mysql:
         condition: service_healthy
@@ -43,6 +54,13 @@ services:
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-5173}:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
 volumes:
   mysql-data:
+  photo-data:

@@ -15,12 +15,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.25.0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
       - run: pnpm install --frozen-lockfile
         working-directory: frontend
       - run: pnpm test
@@ -40,3 +40,28 @@ jobs:
           cache-dependency-path: backend/pom.xml
       - run: ./mvnw -B verify
         working-directory: backend
+  mysql-compose:
+    name: mysql-compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      COMPOSE_PROJECT_NAME: frame-say-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: ./scripts/init-env.sh
+      - name: Build and wait for MySQL and the HTTP services
+        run: docker compose --profile app up -d --build --wait --wait-timeout 180
+      - name: Validate the business API against MySQL via Nginx
+        run: node --env-file=.env scripts/smoke-compose.mjs create "$RUNNER_TEMP/frame-say-smoke.json"
+      - name: Restart MySQL and the backend and verify persistence
+        run: |
+          docker compose --profile app stop frontend backend mysql
+          docker compose --profile app up -d --wait --wait-timeout 150
+          node --env-file=.env scripts/smoke-compose.mjs verify "$RUNNER_TEMP/frame-say-smoke.json"
+      - if: failure()
+        run: docker compose --profile app logs --no-color --tail 80
+      - if: always()
+        run: docker compose --profile app down -v

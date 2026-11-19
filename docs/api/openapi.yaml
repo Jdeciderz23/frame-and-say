@@ -1,11 +1,10 @@
 openapi: 3.0.3
 info:
-  title: 合照都满意 - 启动阶段接口草案
-  version: startup-draft
+  title: 照有商量 · Frame & Say
+  version: team-baseline
   description: >-
-    当前仅/api/health为基础工程实现契约，需以实际测试记录为准。
-    x-implementation-status为planned的业务接口尚未实现，仅用于前两周并行开发讨论。
-    身份方案、授权用途和偏好档位待确认；Bearer方案仅占位，不表示已经实现登录。
+    已实现的接口用于团队联调。标记为 planned 的选片接口用于设计评审。
+    Bearer 联调用身份由本机配置提供，正式登录和邀请流程单独开发。
 servers:
   - url: http://127.0.0.1:8080
 security:
@@ -14,8 +13,8 @@ paths:
   /api/health:
     get:
       operationId: getHealth
-      summary: 应用存活检查，不代表MySQL或存储服务已连通
-      x-implementation-status: implemented-scaffold
+      summary: 检查应用存活
+      x-implementation-status: implemented
       security: []
       responses:
         '200':
@@ -35,8 +34,8 @@ paths:
   /api/events:
     post:
       operationId: createEvent
-      summary: 创建活动；创建者来自服务端认证上下文
-      x-implementation-status: planned
+      summary: 创建活动并将调用者设为该活动的发起人
+      x-implementation-status: implemented
       x-task-id: W2-01
       requestBody:
         required: true
@@ -51,13 +50,12 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 80
+                  description: 名称不能全为空白
                 desiredPhotoCount:
-                  type: integer
-                  minimum: 1
-                  maximum: 100
+                  $ref: '#/components/schemas/PhotoCount'
       responses:
         '201':
-          description: 创建成功
+          description: 活动及其发起人成员关系创建成功
           content:
             application/json:
               schema:
@@ -69,11 +67,11 @@ paths:
     get:
       operationId: listMyEvents
       summary: 列出当前用户已加入的活动
-      x-implementation-status: planned
+      x-implementation-status: implemented
       x-task-id: W2-01
       responses:
         '200':
-          description: 当前用户可访问的活动，空数组合法
+          description: 当前用户可访问的活动，允许空数组
           content:
             application/json:
               schema:
@@ -87,40 +85,82 @@ paths:
       - $ref: '#/components/parameters/EventId'
     get:
       operationId: listEventMembers
-      summary: 查询活动成员；必须先校验当前用户属于活动
-      x-implementation-status: planned
+      summary: 查询当前用户所在活动的成员
+      x-implementation-status: implemented
       x-task-id: W2-03
       responses:
         '200':
-          description: 成员列表
+          description: 该活动的成员列表
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  type: object
-                  required: [userId, displayName, role]
-                  properties:
-                    userId:
-                      type: string
-                    displayName:
-                      type: string
-                    role:
-                      type: string
-                      enum: [ORGANIZER, PARTICIPANT]
+                  $ref: '#/components/schemas/EventMember'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: addEventMember
+      summary: 发起人添加已配置的联调成员
+      x-implementation-status: implemented
+      x-task-id: W2-03
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [userId]
+              properties:
+                userId:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                  example: participant
+                  description: 拟添加的已有身份
+      responses:
+        '204':
+          description: 成员已加入，重复请求保留原成员关系
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/events/{eventId}/photos:
     parameters:
       - $ref: '#/components/parameters/EventId'
+    get:
+      operationId: listEventPhotos
+      summary: 列出成员可访问的活动照片
+      x-implementation-status: implemented
+      x-task-id: W2-05
+      responses:
+        '200':
+          description: 活动照片及版本信息
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PhotoMetadata'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     post:
       operationId: uploadPhoto
-      summary: 上传一张照片；校验成员权限和真实文件内容
-      x-implementation-status: planned
+      summary: 上传一张照片
+      description: JPEG 或 PNG。文件上限 8 MiB，请求体上限 9 MiB，单边至多 12000 像素，总像素至多 2400 万。
+      x-implementation-status: implemented
       x-task-id: W2-05
-      description: JPEG/PNG；文件大小和像素上限待评审。服务端生成对象键，不接受客户端路径。
       requestBody:
         required: true
         content:
@@ -134,7 +174,7 @@ paths:
                   format: binary
       responses:
         '201':
-          description: 图片及版本元数据；实际访问需权限检查，不返回公共桶地址
+          description: 照片及版本创建，初始出镜名单未确认
           content:
             application/json:
               schema:
@@ -145,18 +185,146 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '413':
-          description: 文件过大
+          description: 文件、请求体或图片尺寸超出限制，代理层错误正文可能与应用不同
+        '409':
+          description: 此活动已有 100 张照片
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
         '415':
-          description: 非支持或无法解码的图片类型
+          $ref: '#/components/responses/UnsupportedImage'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable'
+  /api/events/{eventId}/photos/{photoId}/versions/{photoVersionId}/thumbnail:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - $ref: '#/components/parameters/PhotoId'
+      - $ref: '#/components/parameters/PhotoVersionPath'
+    get:
+      operationId: getPhotoThumbnail
+      summary: 成员读取指定版本的缩略图
+      x-implementation-status: implemented
+      x-task-id: W2-05
+      responses:
+        '200':
+          description: 私有缩略图
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable'
+  /api/events/{eventId}/photos/{photoId}/versions/{photoVersionId}/subjects:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - $ref: '#/components/parameters/PhotoId'
+      - $ref: '#/components/parameters/PhotoVersionPath'
+    get:
+      operationId: getPhotoSubjects
+      summary: 发起人读取指定版本的出镜名单
+      x-implementation-status: implemented
+      x-task-id: W2-03
+      responses:
+        '200':
+          description: 当前名单及修订号
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoSubjects'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    put:
+      operationId: confirmPhotoSubjects
+      summary: 发起人确认或更新指定版本的出镜名单
+      description: >-
+        subjectRevision 必须是当前修订。userIds 仅包含本活动成员。
+        首次确认会递增修订号，允许明确确认空名单。重复提交已确认的相同集合保留修订号。
+      x-implementation-status: implemented
+      x-task-id: W2-03
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [subjectRevision, userIds]
+              properties:
+                subjectRevision:
+                  $ref: '#/components/schemas/SubjectRevision'
+                userIds:
+                  type: array
+                  uniqueItems: true
+                  maxItems: 10
+                  items:
+                    type: string
+                  example: [participant]
+      responses:
+        '200':
+          description: 当前版本与名单修订状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoMetadata'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/events/{eventId}/photos/{photoId}/preferences/me:
     parameters:
       - $ref: '#/components/parameters/EventId'
       - $ref: '#/components/parameters/PhotoId'
+    get:
+      operationId: getMyPreference
+      summary: 查询本人对指定版本的偏好
+      parameters:
+        - $ref: '#/components/parameters/PhotoVersionQuery'
+      x-implementation-status: implemented
+      x-task-id: W2-02
+      responses:
+        '200':
+          description: 当前值，未评分时 value 为 null
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preference'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
     put:
       operationId: setMyPreference
-      summary: 更新本人偏好；不产生任何发布授权
-      x-implementation-status: planned
+      summary: 更新本人对指定版本的偏好
+      x-implementation-status: implemented
       x-task-id: W2-02
       requestBody:
         required: true
@@ -169,10 +337,10 @@ paths:
               properties:
                 photoVersionId:
                   type: string
+                  format: uuid
                 value:
                   type: integer
                   enum: [-1, 0, 1]
-                  description: 暂定不喜欢/一般/喜欢；未评分不等于0，缺省规则待确认
       responses:
         '204':
           description: 本人偏好已保存
@@ -182,18 +350,49 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
   /api/events/{eventId}/photos/{photoId}/consents/me:
     parameters:
       - $ref: '#/components/parameters/EventId'
       - $ref: '#/components/parameters/PhotoId'
+    get:
+      operationId: getMyPublicationConsent
+      summary: 查询当前名单修订下的本人授权状态
+      parameters:
+        - $ref: '#/components/parameters/PhotoVersionQuery'
+        - name: purpose
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Purpose'
+      x-implementation-status: implemented
+      x-task-id: W2-03
+      responses:
+        '200':
+          description: 当前修订、授权状态及本人是否可以确认
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
     put:
       operationId: setMyPublicationConsent
-      summary: 对精确图片版本和用途记录本人发布决定
-      x-implementation-status: planned
+      summary: 对指定版本、出镜名单修订和用途提交本人决定
+      description: 只有已确认名单中的本人可提交。修订发生变化时需重新读取上下文。
+      x-implementation-status: implemented
       x-task-id: W2-03
-      description: 策略和模型是第二周重点；完整接口落地取决于授权语义评审，不允许代签。
       requestBody:
         required: true
         content:
@@ -201,10 +400,13 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [photoVersionId, purpose, decision]
+              required: [photoVersionId, subjectRevision, purpose, decision]
               properties:
                 photoVersionId:
                   type: string
+                  format: uuid
+                subjectRevision:
+                  $ref: '#/components/schemas/SubjectRevision'
                 purpose:
                   $ref: '#/components/schemas/Purpose'
                 decision:
@@ -212,13 +414,15 @@ paths:
                   enum: [ALLOW, DENY]
       responses:
         '204':
-          description: 本人决定已保存；未确认由服务端保持PENDING，不得自动同意
+          description: 本人决定已保存
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
   /api/events/{eventId}/selections:
@@ -226,10 +430,12 @@ paths:
       - $ref: '#/components/parameters/EventId'
     post:
       operationId: selectPhotos
-      summary: 申请选片；评分和授权由服务端读取，不信任前端eligible字段
+      summary: 申请选片并返回结构化解释
+      description: >-
+        草案。应用从服务端读取偏好和当前授权，先排除不合格候选，再运行算法。
+        返回汇总原因和效用，不暴露个人授权决定。
       x-implementation-status: planned
       x-task-id: W2-04
-      description: 第二周先验收纯Java模拟数据算法；薄接口仅在依赖具备后连接，未接通时明确未实现。
       requestBody:
         required: true
         content:
@@ -240,44 +446,30 @@ paths:
               required: [count, purpose]
               properties:
                 count:
-                  type: integer
-                  minimum: 1
-                  maximum: 100
+                  $ref: '#/components/schemas/PhotoCount'
                 purpose:
                   $ref: '#/components/schemas/Purpose'
       responses:
         '200':
-          description: 候选不足也返回实际结果和原因，绝不放宽授权；结果不是发布许可
+          description: 返回实际可选结果和汇总解释。文件交付仍需复核授权。
           content:
             application/json:
               schema:
-                type: object
-                required: [selectedPhotoVersionIds, requestedCount, complete, reasons]
-                properties:
-                  selectedPhotoVersionIds:
-                    type: array
-                    items:
-                      type: string
-                  requestedCount:
-                    type: integer
-                  complete:
-                    type: boolean
-                  reasons:
-                    type: array
-                    items:
-                      type: string
+                $ref: '#/components/schemas/Selection'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      description: 身份方案占位，待团队确认；不能凭此认定已实现认证
+      description: 联调令牌由服务端分别配置。只在开发环境使用。
   parameters:
     EventId:
       name: eventId
@@ -285,41 +477,167 @@ components:
       required: true
       schema:
         type: string
+        format: uuid
     PhotoId:
       name: photoId
       in: path
       required: true
       schema:
         type: string
+        format: uuid
+    PhotoVersionPath:
+      name: photoVersionId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PhotoVersionQuery:
+      name: photoVersionId
+      in: query
+      required: true
+      schema:
+        type: string
+        format: uuid
   schemas:
+    PhotoCount:
+      type: integer
+      minimum: 1
+      maximum: 100
+    SubjectRevision:
+      type: integer
+      minimum: 0
     Event:
       type: object
       required: [id, name]
       properties:
         id:
           type: string
+          format: uuid
         name:
           type: string
         desiredPhotoCount:
           type: integer
           minimum: 1
           maximum: 100
+          nullable: true
+    EventMember:
+      type: object
+      required: [userId, displayName, role]
+      properties:
+        userId:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [ORGANIZER, PARTICIPANT]
     PhotoMetadata:
       type: object
-      required: [photoId, photoVersionId, eventId, thumbnailAvailable]
+      required: [photoId, photoVersionId, eventId, thumbnailAvailable, thumbnailUrl, subjectRevision, rosterConfirmed]
       properties:
         photoId:
           type: string
+          format: uuid
         photoVersionId:
           type: string
+          format: uuid
         eventId:
           type: string
+          format: uuid
         thumbnailAvailable:
           type: boolean
+        thumbnailUrl:
+          type: string
+          description: 同源 API 路径，读取时携带当前成员令牌
+        subjectRevision:
+          $ref: '#/components/schemas/SubjectRevision'
+        rosterConfirmed:
+          type: boolean
+    Preference:
+      type: object
+      required: [photoVersionId, value]
+      properties:
+        photoVersionId:
+          type: string
+          format: uuid
+        value:
+          type: integer
+          nullable: true
+          enum: [-1, 0, 1, null]
+          description: 未评分为 null，0 表示一般
+    PhotoSubjects:
+      type: object
+      required: [photoVersionId, subjectRevision, rosterConfirmed, userIds]
+      properties:
+        photoVersionId:
+          type: string
+          format: uuid
+        subjectRevision:
+          $ref: '#/components/schemas/SubjectRevision'
+        rosterConfirmed:
+          type: boolean
+        userIds:
+          type: array
+          uniqueItems: true
+          maxItems: 10
+          items:
+            type: string
     Purpose:
       type: string
       enum: [INTERNAL_SHARE, PUBLIC_POST]
-      description: 暂定用途，待访谈确认；不同用途不得自动继承许可
+      description: 授权用途，两个用途分别确认
+    Consent:
+      type: object
+      required: [photoVersionId, subjectRevision, purpose, decision, canDecide]
+      properties:
+        photoVersionId:
+          type: string
+          format: uuid
+        subjectRevision:
+          $ref: '#/components/schemas/SubjectRevision'
+        purpose:
+          $ref: '#/components/schemas/Purpose'
+        decision:
+          type: string
+          enum: [PENDING, ALLOW, DENY]
+        canDecide:
+          type: boolean
+    Selection:
+      type: object
+      required: [selectedPhotoVersionIds, requestedCount, complete, reasons, metrics]
+      properties:
+        selectedPhotoVersionIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        requestedCount:
+          $ref: '#/components/schemas/PhotoCount'
+        complete:
+          type: boolean
+        reasons:
+          type: array
+          items:
+            type: object
+            required: [code, photoCount]
+            properties:
+              code:
+                type: string
+                enum: [ROSTER_UNCONFIRMED, AUTHORIZATION_REQUIRED, INSUFFICIENT_CANDIDATES]
+              photoCount:
+                type: integer
+                minimum: 0
+        metrics:
+          type: object
+          properties:
+            eligiblePhotoCount:
+              type: integer
+              minimum: 0
+            minimumMemberUtility:
+              type: number
+            totalMemberUtility:
+              type: number
     Problem:
       type: object
       required: [title, status]
@@ -332,16 +650,48 @@ components:
           type: integer
         detail:
           type: string
+        instance:
+          type: string
   responses:
     BadRequest:
-      description: 参数或文件不合法
+      description: 参数、名单或文件信息不合法
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
     Unauthenticated:
-      description: 未识别有效身份
+      description: 身份缺失或令牌无效
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     Forbidden:
-      description: 无访问或操作权限；不能跨活动访问或替别人授权
+      description: 当前用户缺少可核实的活动成员关系、角色或本人确认资格
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: 资源不存在或资源与路径上下文不匹配
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     Conflict:
-      description: 图片版本、出镜集合或其他状态发生变化，需刷新并重新确认
+      description: 照片版本、出镜名单修订或其他相关状态已经变化
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    UnsupportedImage:
+      description: 不支持或无法解码的 JPEG/PNG
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    StorageUnavailable:
+      description: 服务端私有存储暂不可用
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

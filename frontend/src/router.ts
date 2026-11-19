@@ -6,9 +6,9 @@ import NotFoundView from './views/NotFoundView.vue'
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', component: HomeView, meta: { title: '合照都满意 · 协同选片' } },
-    { path: '/health', component: HealthView, meta: { title: '服务连接 · 合照都满意' } },
-    { path: '/:pathMatch(.*)*', component: NotFoundView, meta: { title: '页面未找到 · 合照都满意' } },
+    { path: '/', component: HomeView, meta: { title: '照有商量 · 协同选片' } },
+    { path: '/health', component: HealthView, meta: { title: '服务连接 · 照有商量' } },
+    { path: '/:pathMatch(.*)*', component: NotFoundView, meta: { title: '页面未找到 · 照有商量' } },
   ],
   scrollBehavior: () => ({ top: 0 }),
 })

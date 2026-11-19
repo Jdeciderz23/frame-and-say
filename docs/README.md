@@ -14,6 +14,7 @@
 | [技术风险](07-risk-register.md) | 风险信号、应对和责任人 |
 | [可复制Issue正文](08-issue-backlog.md) | 第一周8项、第二周5项待执行任务 |
 | [结构化Issue数据](issues.json) | 后续导入工具使用；逻辑成员编号须映射真实账号 |
-| [API草案](api/openapi.yaml) | 健康接口和明确标记planned的业务契约 |
+| [API 契约](api/openapi.yaml) | 已实现的业务接口与标记为 planned 的推荐契约 |
+| [本机 API 联调](api/local-walkthrough.md) | 用合成账号、图片和名单核对成员权限及授权修订 |
 
 开发启动见[根目录README](../README.md)，实际检查结果见[验证记录](验证记录.md)。看到配置文件、接口草案或任务清单，不等于相应服务已运行或功能已完成。

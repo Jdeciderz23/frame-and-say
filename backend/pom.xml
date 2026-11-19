@@ -13,7 +13,7 @@
   <artifactId>consensus</artifactId>
   <version>0.0.0-SNAPSHOT</version>
   <name>group-photo-consensus</name>
-  <description>合照都满意 - 协同选片项目基础工程</description>
+  <description>照有商量 - 协同选片系统</description>
   <properties>
     <java.version>21</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -34,6 +34,19 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-mysql</artifactId>
+      <scope>runtime</scope>
     </dependency>
     <dependency>
       <groupId>com.mysql</groupId>
