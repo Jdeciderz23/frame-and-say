@@ -10,7 +10,7 @@
 
 ## 从 Issue 到 PR
 
-1. 在 Issue 确认负责人、评审人、验收标准和依赖。把 W1/W2 内部任务 ID 映射到实际的 `#编号`，并把依赖链接补齐。
+1. 在 Issue 确认负责人、验收标准和依赖。把 W1/W2 内部任务 ID 映射到实际的 `#编号`，并把依赖链接补齐。
 2. 从最新 `main` 开一个短期分支。示例 `feature/w2-01-event-create`。修复用 `fix/`，文档用 `docs/`。
 3. 小步提交，例如 `feat(event): 校验活动创建名称`。改动触及 API、迁移、权限或共享配置时，邀请实际消费者或模块负责人评审。
 4. 打开网页 PR 模板，保留关联任务、改动范围、运行命令和结果、AI 使用等字段。完成 Issue 时在正文写 `Closes #实际编号`。使用 CLI 时打开网页编辑，或显式传入包含这些内容的正文文件。
@@ -37,7 +37,7 @@ node scripts/publish-issues.mjs
 node scripts/publish-issues.mjs --repo Jdeciderz23/frame-and-say --apply
 ```
 
-把每条任务的评审人加入对应 PR。五人的默认评审环见 [开发分工](04-team-responsibilities.md)，授权策略变更还需模块负责人检查。首个基线提交后，日常改动都走功能分支。
+提交 PR 时，根据改动内容邀请其他成员评审。涉及授权策略的变更请模块负责人检查。
 
 ## 合并冲突
 
