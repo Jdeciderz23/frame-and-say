@@ -1,0 +1,16 @@
+# Optional overlay: set MINIO_IMAGE to an available, reviewed image before use.
+# docker compose -f docker-compose.yml -f docker-compose.storage.yml up -d mysql minio
+services:
+  minio:
+    image: ${MINIO_IMAGE:?Set a verified MINIO_IMAGE in .env first}
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Run scripts/init-env.sh first}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Run scripts/init-env.sh first}
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - minio-data:/data
+volumes:
+  minio-data:

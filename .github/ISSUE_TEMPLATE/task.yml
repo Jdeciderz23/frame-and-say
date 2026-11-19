@@ -1,0 +1,29 @@
+name: 开发任务
+description: 前两周任务、调研、设计与工程工作
+title: "[task] "
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标与范围
+      description: 关联需求或计划中的任务编号；未确认的规则明确标注
+    validations:
+      required: true
+  - type: input
+    id: owner
+    attributes:
+      label: 负责人和评审人
+      placeholder: 成员编号 + 已确认的 GitHub 账号
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 完成标准与测试证据
+      value: "- [ ] 可运行代码或可评审文档\n- [ ] 测试通过并附命令/结果\n- [ ] 至少一位其他成员评审"
+    validations:
+      required: true
+  - type: textarea
+    id: depends
+    attributes:
+      label: 前置依赖与接口影响
