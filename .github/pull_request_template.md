@@ -14,4 +14,4 @@
 
 <!-- 填写工具、用途和本人核查内容。未使用可写「无」。 -->
 
-<!-- 准备好后请在右侧 Reviewers 选择其他成员。分支、批准和合并条件见 /CONTRIBUTING.md。 -->
+<!-- 组员的 PR 请确认 Reviewers 中有代码所有者 @Jdeciderz23。仓库负责人自己的 PR 在验证栏留存自查结果。所有 PR 合并前都要同步最新 main，并通过 frontend、backend、mysql-compose。 -->

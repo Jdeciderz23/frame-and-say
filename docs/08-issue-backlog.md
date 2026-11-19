@@ -1,6 +1,6 @@
 # 启动任务索引
 
-前两周任务的项目周编号与 GitHub 编号如下。打开 Issue 查看负责人、依赖和验收进度。分支名使用表中的 GitHub 编号。
+前两周开发任务已在 GitHub 建立并指派。打开对应 Issue 查看当前负责人、依赖、关联 PR 和验收进度。分支名使用表中的 GitHub 编号。需求故事按[第 2 课交付要求](06-first-two-weeks.md#第-2-课交付要求)逐条建立 Issue。
 
 | 项目周编号 | GitHub Issue |
 |---|---|
@@ -18,4 +18,4 @@
 | W2-04 | [#12 实现有硬约束和解释的公平选择算法原型](https://github.com/Jdeciderz23/frame-and-say/issues/12) |
 | W2-05 | [#13 完善上传、缩略图与持久化验证](https://github.com/Jdeciderz23/frame-and-say/issues/13) |
 
-维护启动清单时可以运行 `node scripts/publish-issues.mjs` 预览[初始化数据](issues.json)。导入脚本会跳过已存在的任务。
+[初始化数据](issues.json)可用 `node scripts/publish-issues.mjs` 预览。导入脚本跳过已存在的任务，已发布任务的变更直接记录在 GitHub Issue。
