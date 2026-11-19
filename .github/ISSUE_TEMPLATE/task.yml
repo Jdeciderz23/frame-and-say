@@ -12,7 +12,7 @@ body:
   - type: input
     id: owner
     attributes:
-      label: 负责人和评审人
+      label: 负责人
       placeholder: 成员编号 + 已确认的 GitHub 账号
     validations:
       required: true
