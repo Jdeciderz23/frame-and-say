@@ -1,6 +1,6 @@
 # 需求调研计划与访谈提纲
 
-状态：**计划，尚无已完成访谈或调查结果**。成员1汇总，五人分别参与访谈、记录和分析，成员5复核证据完整性。
+成员 1 汇总，五人共同参与访谈、记录和分析。[PR #16](https://github.com/Jdeciderz23/frame-and-say/pull/16) 提交了基于公开资料的调研报告和用户故事初稿，由原作者按评审意见修订。它是 [#6 真人访谈](https://github.com/Jdeciderz23/frame-and-say/issues/6) 和 [#7 需求评审](https://github.com/Jdeciderz23/frame-and-say/issues/7) 的阶段材料。真人访谈完成情况以 #6 的匿名纪要和验收记录为准。
 
 ## 执行安排
 

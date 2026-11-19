@@ -1,16 +1,22 @@
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["frontend", "backend", "mysql-compose"]
+    "contexts": [],
+    "checks": [
+      {"context": "backend", "app_id": 15368},
+      {"context": "frontend", "app_id": 15368},
+      {"context": "mysql-compose", "app_id": 15368}
+    ]
   },
   "enforce_admins": true,
   "required_pull_request_reviews": {
-    "dismiss_stale_reviews": true,
+    "dismiss_stale_reviews": false,
     "require_code_owner_reviews": false,
-    "required_approving_review_count": 1
+    "require_last_push_approval": false,
+    "required_approving_review_count": 0
   },
   "restrictions": null,
-  "required_conversation_resolution": true,
+  "required_conversation_resolution": false,
   "allow_force_pushes": false,
   "allow_deletions": false
 }

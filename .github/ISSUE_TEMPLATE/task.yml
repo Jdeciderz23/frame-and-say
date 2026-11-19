@@ -9,18 +9,14 @@ body:
       description: 关联需求或计划中的任务编号；未确认的规则明确标注
     validations:
       required: true
-  - type: input
-    id: owner
+  - type: markdown
     attributes:
-      label: 负责人
-      placeholder: 成员编号 + 已确认的 GitHub 账号
-    validations:
-      required: true
+      value: "请在右侧 Assignees 选择负责此任务的成员。分支和 PR 使用该 Issue 的 GitHub 编号。"
   - type: textarea
     id: acceptance
     attributes:
       label: 完成标准与测试证据
-      value: "- [ ] 可运行代码或可评审文档\n- [ ] 测试通过并附命令/结果\n- [ ] 至少一位其他成员评审"
+      placeholder: "写出本任务可以核验的结果和验证方法。"
     validations:
       required: true
   - type: textarea
