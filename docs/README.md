@@ -1,20 +1,16 @@
-# 启动文档索引
+# 项目文档
 
-这些文档是项目前两周的启动草案；真实访谈、团队确认和本人编码成果不能由文档生成替代。
+运行与测试见[项目 README](../README.md)，分支命名、推送和 PR 评审统一见[协作指南](../CONTRIBUTING.md)。工作负责人、进度和验收记录以 [GitHub Issues](https://github.com/Jdeciderz23/frame-and-say/issues) 为准。
 
-| 文档 | 用途 |
+| 资料 | 内容 |
 |---|---|
-| [项目启动说明](00-project-brief.md) | 背景、范围、当前决定与待确认事项 |
-| [需求调研计划](01-research-plan.md) | 招募、访谈提纲、匿名纪要模板 |
-| [角色与初步用例](02-users-and-use-cases.md) | 三类角色、24项功能用例和4项非功能候选目标 |
-| [技术架构](03-architecture.md) | 模块边界、数据库/API原则、授权不变量、算法起步 |
-| [五人开发分工](04-team-responsibilities.md) | 每人的实际代码、接口、测试、评审与共同职责 |
-| [GitHub协作规范](05-github-workflow.md) | 仓库权限、功能分支、PR审核、合并冲突 |
-| [前两周计划](06-first-two-weeks.md) | 任务、负责人、交付、依赖和完成标准 |
-| [技术风险](07-risk-register.md) | 风险信号、应对和责任人 |
-| [可复制Issue正文](08-issue-backlog.md) | 第一周8项、第二周5项待执行任务 |
-| [结构化Issue数据](issues.json) | 后续导入工具使用；逻辑成员编号须映射真实账号 |
+| [项目启动说明](00-project-brief.md) | 用户、范围、工程决策与待确认事项 |
+| [需求调研计划](01-research-plan.md) | 招募、访谈提纲与匿名纪要模板 |
+| [调研报告和用户故事初稿（PR #16）](https://github.com/Jdeciderz23/frame-and-say/pull/16) | 基于公开资料的调研报告与首批 10 条故事，由原作者按评审意见修订 |
+| [角色与初步用例](02-users-and-use-cases.md) | 角色、候选用例与验收方向 |
+| [技术架构](03-architecture.md) | 模块边界、数据库和授权规则 |
+| [五人开发分工](04-team-responsibilities.md) | 账号、模块维护责任和接口依赖 |
+| [前两周计划](06-first-two-weeks.md) · [任务索引](08-issue-backlog.md) | 第 2 课交付要求、项目相对周计划和对应的 GitHub Issue |
+| [技术风险](07-risk-register.md) · [工程验证记录](验证记录.md) | 风险归属及各阶段实测结果 |
 | [API 契约](api/openapi.yaml) | 已实现的业务接口与标记为 planned 的推荐契约 |
 | [本机 API 联调](api/local-walkthrough.md) | 用合成账号、图片和名单核对成员权限及授权修订 |
-
-开发启动见[根目录README](../README.md)，实际检查结果见[验证记录](验证记录.md)。看到配置文件、接口草案或任务清单，不等于相应服务已运行或功能已完成。

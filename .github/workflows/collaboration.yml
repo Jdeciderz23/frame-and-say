@@ -1,0 +1,33 @@
+name: Collaboration
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+  push:
+    branches: ['**']
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: collaboration-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy:
+    if: github.event_name == 'pull_request' || github.event.deleted == false
+    name: ${{ github.event_name == 'pull_request' && 'pr-policy' || 'push-policy' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test scripts/check-collaboration.test.mjs
+      - run: node scripts/check-collaboration.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
