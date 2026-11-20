@@ -44,8 +44,9 @@ for (const issue of issues) {
     continue;
   }
   const dependencies = issue.depends_on.map((id) => `#${numbers.get(id)} (${id})`);
-  const body = `负责人：${issue.owner}\n项目相对周：${issue.week}\n依赖链接：${dependencies.join(', ') || '无'}\n\n${issue.body}\n\n> 成员编号待映射真实 GitHub 账号，创建后由仓库管理员设置 Assignees。`;
-  const url = gh(['issue', 'create', '--repo', repository, '--title', titleFor(issue), '--body-file', '-'], body);
+  const body = `项目相对周：${issue.week}\n依赖：${dependencies.join(', ') || '无'}\n\n${issue.body}`;
+  const url = gh(['issue', 'create', '--repo', repository, '--assignee', issue.owner,
+    '--title', titleFor(issue), '--body-file', '-'], body);
   const number = url.match(/\/issues\/(\d+)$/)?.[1];
   if (!number) throw new Error(`Created ${prefix}, but couldn't read its number from: ${url}`);
   numbers.set(issue.id, Number(number));
