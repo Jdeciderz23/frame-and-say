@@ -50,4 +50,4 @@
 | US-09 | UC-19、UC-20 |
 | US-10 | UC-21、UC-22 |
 
-[原始故事叙事](09-user-stories.md) · [用例图](12-use-case-diagram.md) · [第三周计划](14-week-three.md)
+[原始故事叙事](09-user-stories.md) · [用例图](12-use-case-diagram.md) · [项目里程碑](https://github.com/Jdeciderz23/frame-and-say/milestones)

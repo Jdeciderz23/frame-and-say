@@ -23,4 +23,4 @@ body:
       required: true
   - type: markdown
     attributes:
-      value: "模块负责人在本卡记录影响评审，组长记录批准、退回或延期依据。批准后通过关联 PR 修订 SRS、矩阵和变更记录。"
+      value: "模块维护者在本卡记录影响评审及采纳、退回或延期的依据。批准后通过关联 PR 修订 SRS、矩阵和变更记录。"
