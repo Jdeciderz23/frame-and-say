@@ -1,0 +1,26 @@
+name: 需求变更
+description: 提交对已有需求及其验收标准的修改申请
+title: "[需求变更] "
+body:
+  - type: input
+    id: ids
+    attributes:
+      label: 原需求、用例编号与版本
+      placeholder: US-06 / UC-12 / v0
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: 触发证据、现有行为及拟议行为
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: 受影响的增量、接口、数据、验收场景和负责人
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: "模块负责人在本卡记录影响评审，组长记录批准、退回或延期依据。批准后通过关联 PR 修订 SRS、矩阵和变更记录。"
