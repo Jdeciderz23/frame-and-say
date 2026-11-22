@@ -67,7 +67,10 @@ public final class SelectionInputValidator {
                         candidate.photoVersionId()));
             }
             Publications.Eligibility authorization = candidate.authorization();
-            if (authorization.eligible() != (authorization.reason() == Publications.Reason.ELIGIBLE)) {
+            if (authorization.reason() == null) {
+                problems.add(new InputProblem(InputProblemCode.MISSING_ELIGIBILITY_REASON,
+                        candidate.photoVersionId()));
+            } else if (authorization.eligible() != (authorization.reason() == Publications.Reason.ELIGIBLE)) {
                 problems.add(new InputProblem(InputProblemCode.INCONSISTENT_ELIGIBILITY,
                         candidate.photoVersionId()));
             }
@@ -131,6 +134,7 @@ public final class SelectionInputValidator {
         BLANK_PHOTO_VERSION_ID,
         DUPLICATE_PHOTO_VERSION_ID,
         NEGATIVE_SUBJECT_REVISION,
+        MISSING_ELIGIBILITY_REASON,
         INCONSISTENT_ELIGIBILITY,
         BLANK_PREFERENCE_MEMBER,
         BLANK_PREFERENCE_VERSION,

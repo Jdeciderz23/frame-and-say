@@ -34,7 +34,8 @@
 
 - `Candidate.authorization` 只能来自授权模块的 `Publications.evaluate(...)` 结论。推荐算法**只读取**它，不调用数据库、不重新计算、不修改。
 - `eligible = false`（拒绝、未确认、名单未确认）的候选一律不进入可选集合，评分再高也不能入选。
-- 校验只检查结论结构自洽（`eligible` 与 `reason` 是否匹配），不判断授权是否正确；授权判定仍由 `authorization` 模块唯一负责。
+- 只有 `eligible = true` 且 `reason = ELIGIBLE` 的结论才进入可选集合；`reason` 为空、或 `eligible` 与 `reason` 不匹配的结论被校验标记，`CandidateFilter` 则抛出明确的输入错误，而不是静默放行。
+- 校验只检查结论结构，不判断授权是否正确；授权判定仍由 `authorization` 模块唯一负责。
 
 ## 结构校验
 
@@ -50,6 +51,7 @@
 | `DUPLICATE_PHOTO_VERSION_ID` | 照片版本 ID 重复 |
 | `NEGATIVE_SUBJECT_REVISION` | 名单修订号为负 |
 | `INCONSISTENT_ELIGIBILITY` | `eligible` 与 `reason` 互相矛盾 |
+| `MISSING_ELIGIBILITY_REASON` | 授权结论缺少 `reason`（为 `null`） |
 | `BLANK_PREFERENCE_MEMBER` / `BLANK_PREFERENCE_VERSION` | 评分记录里的标识为空白 |
 | `UNKNOWN_PREFERENCE_MEMBER` / `UNKNOWN_PREFERENCE_CANDIDATE` | 评分指向输入中不存在的成员或候选 |
 | `INVALID_SCORE` | 评分不在 -1–1（`null` 合法） |
@@ -60,7 +62,7 @@
 
 `CandidateFilter.filter(input)` 只应用授权结论，输出：
 
-- `eligible`：可按输入顺序参与后续选择的候选；
+- `eligible`：只有 `eligible = true` 且 `reason = ELIGIBLE` 的候选，按输入顺序参与后续选择；结论不完整或不一致时抛 `IllegalArgumentException`；
 - `excludedByReason`：按 `Publications.Reason` 统计的排除数量；
 - `shortfall`：`目标数量 - 有效候选数`，小于 0 时记 0；
 - `toReasonCounts()`：转成公开原因码，拒绝与未确认合并为 `AUTHORIZATION_REQUIRED`，只给数量，**不暴露是谁拒绝**。

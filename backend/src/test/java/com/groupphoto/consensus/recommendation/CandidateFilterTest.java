@@ -1,12 +1,16 @@
 package com.groupphoto.consensus.recommendation;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.groups.Tuple.tuple;
 
 import com.groupphoto.consensus.authorization.Publications;
+import com.groupphoto.consensus.authorization.Publications.Eligibility;
+import com.groupphoto.consensus.authorization.Publications.Reason;
 import com.groupphoto.consensus.recommendation.CandidateFilter.FilteredCandidates;
 import com.groupphoto.consensus.recommendation.SelectionInput.Candidate;
 import com.groupphoto.consensus.recommendation.SelectionResult.ReasonCode;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -89,5 +93,35 @@ class CandidateFilterTest {
         assertThat(filtered.toReasonCounts())
                 .containsExactly(new SelectionResult.ReasonCount(ReasonCode.INSUFFICIENT_CANDIDATES,
                         sample.requestedCount()));
+    }
+
+    @Test
+    void inconsistentConclusionIsRejectedNotCountedAsEligible() {
+        SelectionInput sample = SyntheticScenario.sample();
+        List<Candidate> candidates = new ArrayList<>(sample.candidates());
+        candidates.set(0, SyntheticScenario.candidate(SyntheticScenario.PHOTO_1, SyntheticScenario.VERSION_1, 3,
+                new Eligibility(true, Reason.CONSENT_DENIED)));
+
+        SelectionInput input = new SelectionInput(sample.eventId(), sample.purpose(), sample.requestedCount(),
+                sample.members(), candidates, sample.preferences());
+
+        assertThatThrownBy(() -> CandidateFilter.filter(input))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(SyntheticScenario.VERSION_1);
+    }
+
+    @Test
+    void missingReasonConclusionThrowsClearErrorInsteadOfNullPointer() {
+        SelectionInput sample = SyntheticScenario.sample();
+        List<Candidate> candidates = new ArrayList<>(sample.candidates());
+        candidates.set(0, SyntheticScenario.candidate(SyntheticScenario.PHOTO_1, SyntheticScenario.VERSION_1, 3,
+                new Eligibility(false, null)));
+
+        SelectionInput input = new SelectionInput(sample.eventId(), sample.purpose(), sample.requestedCount(),
+                sample.members(), candidates, sample.preferences());
+
+        assertThatThrownBy(() -> CandidateFilter.filter(input))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("authorization");
     }
 }

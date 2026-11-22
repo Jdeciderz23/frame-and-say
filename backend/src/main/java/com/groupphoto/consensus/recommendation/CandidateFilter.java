@@ -10,7 +10,10 @@ import java.util.Objects;
 /**
  * 硬约束过滤：只应用授权策略给出的结论，不做评分排序、效用计算或目标数量选择，那些属于第二周。
  *
- * <p>拒绝、未确认、名单未确认的照片一律不进入候选。过滤结果只按原因计数，不记录具体拒绝了谁。
+ * <p>拒绝、未确认、名单未确认的照片一律不进入候选。只有 {@code eligible = true} 且 {@code reason = ELIGIBLE}
+ * 的结论才视为可选；结论不完整（{@code reason} 为空）或不一致（如 {@code eligible = true} 却带拒绝原因）时，
+ * 抛出 {@link IllegalArgumentException} 作为明确的输入错误，而不是静默放行或抛出 {@link NullPointerException}。
+ * 过滤结果只按原因计数，不记录具体拒绝了谁。
  */
 public final class CandidateFilter {
     private CandidateFilter() {}
@@ -20,10 +23,17 @@ public final class CandidateFilter {
         List<SelectionInput.Candidate> eligible = new ArrayList<>();
         Map<Publications.Reason, Integer> excluded = new EnumMap<>(Publications.Reason.class);
         for (SelectionInput.Candidate candidate : input.candidates()) {
-            if (candidate.authorization().eligible()) {
+            Publications.Eligibility authorization = candidate.authorization();
+            if (authorization.eligible() && authorization.reason() == Publications.Reason.ELIGIBLE) {
                 eligible.add(candidate);
+            } else if (!authorization.eligible()
+                    && authorization.reason() != null
+                    && authorization.reason() != Publications.Reason.ELIGIBLE) {
+                excluded.merge(authorization.reason(), 1, Integer::sum);
             } else {
-                excluded.merge(candidate.authorization().reason(), 1, Integer::sum);
+                throw new IllegalArgumentException(
+                        "Invalid authorization conclusion for candidate " + candidate.photoVersionId()
+                                + ": " + authorization);
             }
         }
         int shortfall = Math.max(0, input.requestedCount() - eligible.size());

@@ -161,6 +161,17 @@ class SelectionInputValidatorTest {
     }
 
     @Test
+    void missingAuthorizationReasonIsRejected() {
+        SelectionInput sample = SyntheticScenario.sample();
+        List<Candidate> candidates = new ArrayList<>(sample.candidates());
+        candidates.set(0, SyntheticScenario.candidate(SyntheticScenario.PHOTO_1, SyntheticScenario.VERSION_1, 3,
+                new Eligibility(false, null)));
+
+        assertThat(problemCodes(withCandidates(candidates, sample.preferences())))
+                .contains(InputProblemCode.MISSING_ELIGIBILITY_REASON);
+    }
+
+    @Test
     void requireValidReportsAllProblemsAtOnce() {
         SelectionInput sample = SyntheticScenario.sample();
         List<EventMember> members = new ArrayList<>(sample.members());

@@ -1,5 +1,6 @@
 package com.groupphoto.consensus.recommendation;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 import java.util.Objects;
 
@@ -18,6 +19,7 @@ public record SelectionResult(
     public SelectionResult {
         selectedPhotoVersionIds = List.copyOf(selectedPhotoVersionIds);
         reasons = List.copyOf(reasons);
+        Objects.requireNonNull(metrics, "metrics");
     }
 
     /** 对外的汇总原因码，与 OpenAPI {@code Selection.reasons[].code} 保持一致。 */
@@ -39,5 +41,6 @@ public record SelectionResult(
     /**
      * 汇总指标。算法尚未实现时，效用字段可以为 {@code null}，表示本轮未计算，而不是 0。
      */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Metrics(Integer eligiblePhotoCount, Double minimumMemberUtility, Double totalMemberUtility) {}
 }
