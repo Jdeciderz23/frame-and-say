@@ -5,6 +5,7 @@ import { albumError, listEvents, listPhotos, type AlbumEvent, type AlbumPhoto } 
 import PhotoThumbnail from '../components/PhotoThumbnail.vue'
 import PhotoPreference from '../components/PhotoPreference.vue'
 import PhotoConsent from '../components/PhotoConsent.vue'
+import EventShareProgress from '../components/EventShareProgress.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -140,12 +141,15 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
           <PhotoPreference :event-id="event.id" :photo="activePhoto" :token="token" />
           <PhotoConsent :event-id="event.id" :photo="activePhoto" :token="token" @refresh="photosRetry++" />
         </section>
-        <ul v-else class="photo-grid">
-          <li v-for="(photo, index) in photos" :key="photo.photoVersionId">
-            <PhotoThumbnail :event-id="event.id" :photo="photo" :token="token" :alt="`照片 ${index + 1} 缩略图`" />
-            <button class="button secondary" type="button" @click="openPhoto(photo)">打开照片 {{ index + 1 }}</button>
-          </li>
-        </ul>
+        <template v-else>
+          <EventShareProgress :key="event.id" :event-id="event.id" :photos="photos" :token="token" />
+          <ul class="photo-grid">
+            <li v-for="(photo, index) in photos" :key="photo.photoVersionId">
+              <PhotoThumbnail :event-id="event.id" :photo="photo" :token="token" :alt="`照片 ${index + 1} 缩略图`" />
+              <button class="button secondary" type="button" @click="openPhoto(photo)">打开照片 {{ index + 1 }}</button>
+            </li>
+          </ul>
+        </template>
       </template>
     </section>
   </section>
@@ -171,7 +175,7 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
 .album-actions input { flex: 1 1 16rem; min-width: 0; }
 
 .album-page input,
-.album-page select {
+.album-page :deep(select) {
   min-height: 44px;
   max-width: 100%;
   padding: 8px 12px;
@@ -182,8 +186,8 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
   font: inherit;
 }
 
-.secondary { color: var(--accent); background: #e8eddc; }
-.secondary:hover { background: #dce6ce; }
+.album-page :deep(.secondary) { color: var(--accent); background: #e8eddc; }
+.album-page :deep(.secondary:hover) { background: #dce6ce; }
 .photo-detail { display: grid; gap: 12px; max-width: 520px; }
 .photo-detail > button { justify-self: start; }
 .photo-detail h3 { scroll-margin-block: 16px; }
@@ -200,7 +204,7 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
 
 @media (max-width: 420px) {
   .album-page { padding-block: 24px 36px; }
-  .album-page select { width: 100%; }
+  .album-page :deep(select) { width: 100%; }
   .photo-grid .button { min-height: 44px; padding-inline: 10px; }
 }
 </style>

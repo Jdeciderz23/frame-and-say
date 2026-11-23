@@ -425,6 +425,36 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/events/{eventId}/consent-progress:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      operationId: getPublicationConsentProgress
+      summary: 查询指定用途的分享确认进度
+      description: 仅活动发起人可查看当前版本是否具备分享条件。待确认和拒绝均显示为需处理。
+      x-implementation-status: implemented
+      x-task-id: US-07
+      parameters:
+        - name: purpose
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Purpose'
+      responses:
+        '200':
+          description: 当前照片版本的汇总状态
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PhotoConsentProgress'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/events/{eventId}/selections:
     parameters:
       - $ref: '#/components/parameters/EventId'
@@ -602,6 +632,19 @@ components:
           type: string
           enum: [PENDING, ALLOW, DENY]
         canDecide:
+          type: boolean
+    PhotoConsentProgress:
+      type: object
+      additionalProperties: false
+      required: [photoId, photoVersionId, eligible]
+      properties:
+        photoId:
+          type: string
+          format: uuid
+        photoVersionId:
+          type: string
+          format: uuid
+        eligible:
           type: boolean
     Selection:
       type: object
