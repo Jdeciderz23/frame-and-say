@@ -7,7 +7,7 @@ import java.util.Objects;
 /**
  * 选片结果契约，与 OpenAPI 中 planned 的 {@code Selection} 响应一致。
  *
- * <p>第一周只定义结构；确定性选择和效用计算在第二周实现。原因码是公开汇总，不暴露具体是哪位成员拒绝。
+ * <p>当前只定义结构；确定性选择和效用计算见 #12。原因码是公开汇总，不暴露具体是哪位成员拒绝。
  */
 public record SelectionResult(
         List<String> selectedPhotoVersionIds,

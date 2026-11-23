@@ -14,5 +14,5 @@
 | [前两周计划](06-first-two-weeks.md) · [任务索引](08-issue-backlog.md) | 第 2 课交付要求、项目相对周计划和对应的 GitHub Issue |
 | [技术风险](07-risk-register.md) · [工程验证记录](验证记录.md) | 风险归属及各阶段实测结果 |
 | [API 契约](api/openapi.yaml) | 已实现的业务接口与标记为 planned 的推荐契约 |
-| [推荐输入输出契约](api/recommendation-dto.md) | W1-04 纯 Java DTO、评分与授权输入语义、校验规则和过滤原因码 |
+| [推荐输入输出契约](api/recommendation-dto.md) | 纯 Java 选片输入/输出契约：已实现的输入校验与候选过滤、对外原因码，以及待确认的排序与效用规则 |
 | [本机 API 联调](api/local-walkthrough.md) | 用合成账号、图片和名单核对成员权限及授权修订 |

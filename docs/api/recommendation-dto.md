@@ -1,10 +1,20 @@
-# 推荐输入输出契约（W1-04 草案）
+# 推荐输入输出契约
 
-状态：**第一周契约草案**，由成员 4 提出，等待成员 3 评审及 W1-07 接口评审确认。
 对应代码：`backend/src/main/java/com/groupphoto/consensus/recommendation/`，纯 Java，不依赖 Spring，也不访问数据库。
-对应接口：[OpenAPI `POST /api/events/{eventId}/selections`](openapi.yaml)（仍为 `planned`，第二周后才接入薄接口）。
 
-本文件只定义“应用用例交给算法什么”和“算法能返回什么”。确定性选择、效用计算和并列规则属于 W2-04，本阶段不实现。
+当前状态：**输入校验与候选过滤已实现**。选片接口 [`POST /api/events/{eventId}/selections`](openapi.yaml) 为 `planned`，排序与效用计算见 [#12](https://github.com/Jdeciderz23/frame-and-say/issues/12)。
+
+本文件定义“应用用例交给算法什么”和“算法能返回什么”：先列当前可用的能力，再给出输入/输出契约、待确认的规则与验证方法。
+
+## 当前可用的能力
+
+| 能力 | 入口 | 说明 |
+|---|---|---|
+| 输入契约 | `SelectionInput`、`Candidate`、`EventMember`、`Preference` | 不可变 DTO，定义应用用例交给算法的全部字段 |
+| 结构校验 | `SelectionInputValidator.validate` / `requireValid` | 一次返回全部问题；`requireValid` 在有问题时抛 `InvalidSelectionInputException` |
+| 候选过滤 | `CandidateFilter.filter` | 只放行 `eligible = true` 且 `reason = ELIGIBLE`，按原因计数并给出缺口 |
+| 对外原因码 | `FilteredCandidates.toReasonCounts` | 汇总 `ROSTER_UNCONFIRMED` / `AUTHORIZATION_REQUIRED` / `INSUFFICIENT_CANDIDATES` |
+| 结果结构 | `SelectionResult` | 与 OpenAPI `Selection` 一致；排序与效用计算待 #12 |
 
 ## 输入
 
@@ -85,22 +95,22 @@
 
 样例不含真实照片、真实用户或伪造的真实偏好，可通过 JUnit 重复运行，结果一致（`CandidateFilterTest` 有确定性断言）。
 
-## 待团队确认（D-04 提案）
+## 待团队确认的技术问题
 
-以下是成员 4 的初步提案，需在组会/W1-07 评审后写入正式契约：
+以下条目尚未定稿，需在排序与效用计算（[#12](https://github.com/Jdeciderz23/frame-and-say/issues/12)）连同团队评审后写入正式契约：
 
 1. 评分档位维持 `-1 / 0 / 1` 三档。
 2. 未评分在效用计算中的处理（按 0 计、或排除该成员对该照片的计入）尚未定；当前只保证“未评分 ≠ 0”不会在输入阶段被抹平。
-3. 成员效用暂定为该成员对入选照片评分之和；公平性先最大化最低成员效用，再比较总效用，最后按版本 ID 稳定排序——在 W2-04 用构造案例验证后再定稿。
+3. 成员效用暂定为该成员对入选照片评分之和；公平性先最大化最低成员效用，再比较总效用，最后按版本 ID 稳定排序——将在 #12 用构造案例验证后定稿。
 4. 目标数量缺省取活动的 `desiredPhotoCount`。
 
 ## 运行
 
 ```sh
-./scripts/maven.sh -B test -Dtest='SelectionInputValidatorTest,CandidateFilterTest'
+./scripts/maven.sh -B test -Dtest='SelectionInputValidatorTest,CandidateFilterTest,SelectionResultSerializationTest'
 ./scripts/check.sh
 ```
 
 ## AI 参与说明
 
-本契约的代码骨架、样例和文档由 AI 辅助起草；评分档位、完整性要求和“不暴露谁拒绝”等约束来自仓库现有文档。作者（成员 4）负责逐条复核、运行测试并能在评审中独立讲解。
+本契约的代码骨架、样例和文档由 AI 辅助起草；评分档位、完整性要求和“不暴露谁拒绝”等约束来自仓库现有文档，均已逐条复核并在本机运行上述测试。

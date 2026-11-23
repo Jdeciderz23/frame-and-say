@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 硬约束过滤：只应用授权策略给出的结论，不做评分排序、效用计算或目标数量选择，那些属于第二周。
+ * 硬约束过滤：只应用授权策略给出的结论，不做评分排序、效用计算或目标数量选择，那些见 #12。
  *
  * <p>拒绝、未确认、名单未确认的照片一律不进入候选。只有 {@code eligible = true} 且 {@code reason = ELIGIBLE}
  * 的结论才视为可选；结论不完整（{@code reason} 为空）或不一致（如 {@code eligible = true} 却带拒绝原因）时，
