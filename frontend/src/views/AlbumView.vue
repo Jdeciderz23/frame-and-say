@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { albumError, listEvents, listPhotos, type AlbumEvent, type AlbumPhoto } from '../api/album'
 import PhotoThumbnail from '../components/PhotoThumbnail.vue'
@@ -23,6 +23,13 @@ const eventId = computed(() => typeof route.query.event === 'string' ? route.que
 const event = computed(() => events.value.find(item => item.id === eventId.value))
 const activePhoto = computed(() => photos.value.find(item => item.photoVersionId === route.query.photo))
 const activePhotoNumber = computed(() => activePhoto.value ? photos.value.indexOf(activePhoto.value) + 1 : 0)
+const photoHeading = useTemplateRef<HTMLHeadingElement>('photoHeading')
+const albumHeading = useTemplateRef<HTMLHeadingElement>('albumHeading')
+
+watch(activePhoto, (photo, previousPhoto) => {
+  if (photo) photoHeading.value?.focus()
+  else if (previousPhoto && !route.query.photo) albumHeading.value?.focus()
+}, { flush: 'post' })
 
 function connect() {
   const nextToken = enteredToken.value.trim()
@@ -117,7 +124,7 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
     </template>
 
     <section v-if="event" aria-labelledby="album-heading">
-      <h2 id="album-heading">{{ event.name }}</h2>
+      <h2 id="album-heading" ref="albumHeading" tabindex="-1">{{ event.name }}</h2>
       <p v-if="photosLoading" role="status">正在加载照片…</p>
       <div v-else-if="photosError">
         <p class="error-message" role="alert">{{ photosError }}</p>
@@ -128,7 +135,7 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
         <p v-if="route.query.photo && !activePhoto" role="status">原照片版本已不可用，请从列表重新打开。</p>
         <section v-if="activePhoto" :key="activePhoto.photoVersionId" class="photo-detail" aria-labelledby="photo-heading">
           <button type="button" class="button secondary" @click="openPhoto()">返回照片列表</button>
-          <h3 id="photo-heading">照片 {{ activePhotoNumber }}</h3>
+          <h3 id="photo-heading" ref="photoHeading" tabindex="-1">照片 {{ activePhotoNumber }}</h3>
           <PhotoThumbnail :event-id="event.id" :photo="activePhoto" :token="token" :alt="`照片 ${activePhotoNumber} 缩略图`" />
           <PhotoPreference :event-id="event.id" :photo="activePhoto" :token="token" />
           <PhotoConsent :event-id="event.id" :photo="activePhoto" :token="token" @refresh="photosRetry++" />
@@ -147,6 +154,7 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
 <style scoped>
 .album-page {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
   max-width: 900px;
   padding: 36px clamp(16px, 5vw, 40px) 48px;
@@ -178,6 +186,7 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
 .secondary:hover { background: #dce6ce; }
 .photo-detail { display: grid; gap: 12px; max-width: 520px; }
 .photo-detail > button { justify-self: start; }
+.photo-detail h3 { scroll-margin-block: 16px; }
 .photo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
@@ -188,4 +197,10 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
 }
 
 .photo-grid li { display: grid; gap: 8px; min-width: 0; }
+
+@media (max-width: 420px) {
+  .album-page { padding-block: 24px 36px; }
+  .album-page select { width: 100%; }
+  .photo-grid .button { min-height: 44px; padding-inline: 10px; }
+}
 </style>
