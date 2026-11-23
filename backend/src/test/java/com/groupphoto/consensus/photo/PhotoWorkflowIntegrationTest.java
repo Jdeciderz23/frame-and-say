@@ -2,6 +2,7 @@ package com.groupphoto.consensus.photo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -164,6 +165,36 @@ class PhotoWorkflowIntegrationTest {
         assertThat(jdbc.queryForObject("""
                 SELECT decision FROM photo_consents WHERE photo_version_id = ? AND subject_revision = 1
                 """, String.class, versionId)).isEqualTo("DENY");
+    }
+
+    @Test
+    void replacesOnlyTheCurrentMembersRatingAndPreservesZero() throws Exception {
+        String eventId = createEvent("Rating", true);
+        JsonNode uploaded = upload(eventId, "png");
+        String photoId = uploaded.required("photoId").asText();
+        String versionId = uploaded.required("photoVersionId").asText();
+        String path = photosAt(eventId) + "/" + photoId + "/preferences/me";
+
+        rate(path, versionId, ORGANIZER, -1);
+        mvc.perform(get(path).param("photoVersionId", versionId).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.value").value(nullValue()));
+        rate(path, versionId, PARTICIPANT, 0);
+        mvc.perform(get(path).param("photoVersionId", versionId).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.value").value(0));
+        rate(path, versionId, PARTICIPANT, 1);
+        mvc.perform(get(path).param("photoVersionId", versionId).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.value").value(1));
+        mvc.perform(get(path).param("photoVersionId", versionId).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.value").value(-1));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM photo_preferences WHERE photo_version_id = ?",
+                Long.class, versionId)).isEqualTo(2L);
+    }
+
+    private void rate(String path, String versionId, String token, int value) throws Exception {
+        var body = json.createObjectNode().put("photoVersionId", versionId).put("value", value);
+        mvc.perform(put(path).header(HttpHeaders.AUTHORIZATION, token)
+                        .contentType(MediaType.APPLICATION_JSON).content(body.toString()))
+                .andExpect(status().isNoContent());
     }
 
     private void assertEligibility(String eventId, String photoId, String versionId, Purpose purpose, Reason result) {

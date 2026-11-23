@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { albumError, listEvents, listPhotos, type AlbumEvent, type AlbumPhoto } from '../api/album'
 import PhotoThumbnail from '../components/PhotoThumbnail.vue'
+import PhotoPreference from '../components/PhotoPreference.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -127,6 +128,7 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
           <button type="button" class="button secondary" @click="openPhoto()">返回照片列表</button>
           <h3 id="photo-heading">照片 {{ activePhotoNumber }}</h3>
           <PhotoThumbnail :event-id="event.id" :photo="activePhoto" :token="token" :alt="`照片 ${activePhotoNumber} 缩略图`" />
+          <PhotoPreference :event-id="event.id" :photo="activePhoto" :token="token" />
         </section>
         <ul v-else class="photo-grid">
           <li v-for="(photo, index) in photos" :key="photo.photoVersionId">
