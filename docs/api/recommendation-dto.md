@@ -83,7 +83,7 @@
 | `AUTHORIZATION_REQUIRED` | `CONSENT_DENIED` + `CONSENT_PENDING` 的照片数量 |
 | `INSUFFICIENT_CANDIDATES` | `shortfall` |
 
-`SelectionResult` 与 OpenAPI 的 `Selection` 结构一致：`selectedPhotoVersionIds`、`requestedCount`、`complete`、`reasons`、`metrics`。当前没有生产者；`metrics` 的效用字段在设计上允许为 `null`，表示尚未计算，而不是 0。
+`SelectionResult` 与 OpenAPI 的 `Selection` 结构一致：`selectedPhotoVersionIds`、`requestedCount`、`complete`、`reasons`、`metrics`。当前只定义结果结构。JSON 响应始终包含 `metrics` 对象。未计算的效用在 Java 中为 `null`，序列化时省略对应字段。
 
 ## 模拟数据
 
@@ -110,7 +110,3 @@
 ./scripts/maven.sh -B test -Dtest='SelectionInputValidatorTest,CandidateFilterTest,SelectionResultSerializationTest'
 ./scripts/check.sh
 ```
-
-## AI 参与说明
-
-本契约的代码骨架、样例和文档由 AI 辅助起草；评分档位、完整性要求和“不暴露谁拒绝”等约束来自仓库现有文档，均已逐条复核并在本机运行上述测试。
