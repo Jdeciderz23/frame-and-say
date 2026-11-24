@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.groupphoto.consensus.support.SyntheticActors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -24,14 +25,14 @@ import org.springframework.test.web.servlet.ResultActions;
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:event_membership_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
-        "app.bootstrap.organizer-token=organizer_integration_test_only_token",
-        "app.bootstrap.participant-token=participant_integration_test_only_token"
+        SyntheticActors.ORGANIZER_PROPERTY,
+        SyntheticActors.PARTICIPANT_PROPERTY
 })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class EventMembershipIntegrationTest {
-    private static final String ORGANIZER = "Bearer organizer_integration_test_only_token";
-    private static final String PARTICIPANT = "Bearer participant_integration_test_only_token";
+    private static final String ORGANIZER = SyntheticActors.ORGANIZER;
+    private static final String PARTICIPANT = SyntheticActors.PARTICIPANT;
 
     @Autowired
     private MockMvc mvc;
