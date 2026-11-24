@@ -1,6 +1,9 @@
+export const localTokenKey = 'frame-and-say:local-token'
+
 export interface AlbumEvent {
   id: string
   name: string
+  desiredPhotoCount?: number | null
 }
 
 export interface AlbumPhoto {
@@ -39,6 +42,20 @@ export function photoPath(eventId: string, photoId: string) {
 
 export async function listEvents(token: string, signal: AbortSignal): Promise<AlbumEvent[]> {
   return (await albumRequest('/api/events', token, { signal })).json()
+}
+
+export async function createEvent(
+  input: { name: string; desiredPhotoCount?: number },
+  token: string,
+  signal: AbortSignal,
+): Promise<AlbumEvent> {
+  const response = await albumRequest('/api/events', token, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: input.name, desiredPhotoCount: input.desiredPhotoCount }),
+    signal,
+  })
+  return response.json()
 }
 
 export async function listPhotos(eventId: string, token: string, signal: AbortSignal): Promise<AlbumPhoto[]> {
