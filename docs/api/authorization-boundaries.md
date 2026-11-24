@@ -67,5 +67,3 @@ node --env-file=.env scripts/smoke-compose.mjs create /path/to/temporary-state.j
 HTTP 验证使用进程环境中的随机凭据，临时日志与状态写入忽略的 `.cache`；验证后已停止本次启动的进程。Maven 使用仓库缓存与本机已有 JDK，未修改系统工具链设置。
 
 本机 Docker 引擎尚未运行，未完成本机 MySQL 实连。增强脚本的 MySQL 结果及重启持久化验证以本 PR 的 `mysql-compose` CI 为准。新版本上传、导出和正式身份不属于本轮已实现能力。
-
-本次使用 Codex 辅助实现、补充测试、整理方案并实际运行上述验证。身份提供方及邀请方案仍需按评审意见确认。

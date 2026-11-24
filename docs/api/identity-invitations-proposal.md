@@ -50,5 +50,3 @@
 - [Spring Security OAuth2 / OIDC 支持](https://docs.spring.io/spring-security/reference/servlet/oauth2/)
 - [Spring Boot 3.5 的 OAuth2 登录配置](https://docs.spring.io/spring-boot/3.5/reference/web/spring-security.html)
 - [Spring Security CSRF 参考](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html)
-
-方案由 Codex 辅助整理，需身份、活动和前端维护者共同评审后进入实现。
