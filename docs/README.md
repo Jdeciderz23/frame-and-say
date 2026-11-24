@@ -11,4 +11,5 @@
 | [用户故事](09-user-stories.md) · [角色与用例](02-users-and-use-cases.md) | 理解活动参与者的使用场景 |
 | [技术架构](03-architecture.md) · [模块维护者](04-team-responsibilities.md) | 查阅模块、数据归属与接口依赖 |
 | [API 契约](api/openapi.yaml) · [本地联调](api/local-walkthrough.md) | 区分现有接口与规划项，以合成数据验证行为 |
+| [推荐输入输出契约](api/recommendation-dto.md) | 查阅输入校验、候选过滤和汇总原因码，以及待确认的排序与效用规则 |
 | [技术风险](07-risk-register.md) · [工程验证记录](验证记录.md) | 查阅待验证的风险和已有测试结果 |
