@@ -56,11 +56,14 @@ jobs:
         run: docker compose --profile app up -d --build --wait --wait-timeout 180
       - name: Validate the business API against MySQL via Nginx
         run: node --env-file=.env scripts/smoke-compose.mjs create "$RUNNER_TEMP/frame-say-smoke.json"
+      - name: Validate photo upload limits and snapshot private files via Nginx
+        run: node --env-file=.env scripts/smoke-photo-storage.mjs create "$RUNNER_TEMP/frame-say-photos.json" --compose
       - name: Restart MySQL and the backend and verify persistence
         run: |
           docker compose --profile app stop frontend backend mysql
           docker compose --profile app up -d --wait --wait-timeout 150
           node --env-file=.env scripts/smoke-compose.mjs verify "$RUNNER_TEMP/frame-say-smoke.json"
+          node --env-file=.env scripts/smoke-photo-storage.mjs verify "$RUNNER_TEMP/frame-say-photos.json" --compose
       - if: failure()
         run: docker compose --profile app logs --no-color --tail 80
       - if: always()
