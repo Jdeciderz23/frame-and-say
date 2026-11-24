@@ -16,7 +16,8 @@ const steps = [
     </div>
     <aside class="project-note" aria-label="当前项目状态">
       <h2>项目进度</h2>
-      <p>目前可检查服务连接。活动、照片、评分和授权的基础接口已可联调，协作页面仍在开发中。</p>
+      <p>活动相册可使用本机联调身份浏览合成照片。</p>
+      <RouterLink to="/album" class="button primary">打开联调相册</RouterLink>
     </aside>
   </section>
   <section class="approach" aria-labelledby="approach-heading">
@@ -28,3 +29,7 @@ const steps = [
     </div>
   </section>
 </template>
+
+<style scoped>
+.project-note .button { margin-top: 16px; }
+</style>
