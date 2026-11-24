@@ -361,6 +361,9 @@ paths:
     get:
       operationId: getMyPublicationConsent
       summary: 查询当前名单修订下的本人授权状态
+      description: >-
+        仅返回当前操作者本人的状态；canDecide=false 时不得提交。
+        若版本已过期返回 409，先重新读取活动照片列表取得当前版本，再读取本人状态。
       parameters:
         - $ref: '#/components/parameters/PhotoVersionQuery'
         - name: purpose
@@ -390,7 +393,10 @@ paths:
     put:
       operationId: setMyPublicationConsent
       summary: 对指定版本、出镜名单修订和用途提交本人决定
-      description: 只有已确认名单中的本人可提交。修订发生变化时需重新读取上下文。
+      description: >-
+        只有已确认名单中的本人可提交。名单或照片版本过期返回 409。
+        调用方应清除待提交选择，重新读取照片列表和本人状态，由本人查看当前版本后再次确认；不得自动重放旧同意。
+        普通出镜者刷新本人状态不需要、也无权读取发起人专用的出镜名单接口。
       x-implementation-status: implemented
       x-task-id: W2-03
       requestBody:
@@ -469,7 +475,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: 联调令牌由服务端分别配置。只在开发环境使用。
+      description: 联调令牌由服务端分别配置；仅在 demo/local/test 且 app.bootstrap.enabled=true 时可用，其他环境不接受演示身份。
   parameters:
     EventId:
       name: eventId
