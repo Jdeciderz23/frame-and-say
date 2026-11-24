@@ -25,3 +25,15 @@ rm "$SMOKE_STATE"
 前端读取缩略图时，用 `fetch` 带上活动成员令牌，再用返回的 Blob 创建对象 URL，离开页面时回收。联调接口保留未评分的 `null`，区别于中性偏好 `0`。改动授权时先读取当前 `subjectRevision`，收到 `409` 后刷新界面并让用户重新确认。联调令牌只用于本机。正式登录、推荐调用和导出仍由对应成员开发。
 
 从首页选择「打开联调相册」，进入 `/album`。先连接当前活动成员的本机令牌，再选择脚本创建的活动。令牌保存在当前标签页的会话存储，选择「断开联调身份」可清除。复制相册地址时只包含活动和照片版本标识。用没有加入活动的令牌打开该地址时，页面提示无法访问。
+
+## 图片存储与输入边界回归
+
+在仓库根目录执行：
+
+```sh
+./scripts/maven.sh -B -Dtest=PhotoImageProcessorTest,LocalPhotoStorageTest,PhotoWorkflowIntegrationTest test
+```
+
+Windows 可在 `backend` 目录用 `./mvnw.cmd -B '-Dtest=PhotoImageProcessorTest,LocalPhotoStorageTest,PhotoWorkflowIntegrationTest' test`。两种方式都需要 Java 21。
+这组测试用内存合成的 JPEG/PNG 和 JUnit 自动清理的临时目录，验证内容解码、文件/像素边界、文件名与存储键隔离、受保护缩略图及拒绝上传无残留。
+仅验证 H2 和本地文件适配器；Docker/MinIO、代理限额及持久化需独立联调。当前实测环境和结果见 [私有图片存储与输入校验记录](../验证记录.md#2026-11-24-私有图片存储与输入校验)。

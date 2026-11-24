@@ -158,7 +158,11 @@ paths:
     post:
       operationId: uploadPhoto
       summary: 上传一张照片
-      description: JPEG 或 PNG。文件上限 8 MiB，请求体上限 9 MiB，单边至多 12000 像素，总像素至多 2400 万。
+      description: >-
+        JPEG 或 PNG，以服务端识别并实际解码的内容为准，不信任文件扩展名或上传声明的 Content-Type。
+        空文件返回 400，伪装文本、其他图片格式或无法解码的图片返回 415。
+        文件上限 8 MiB，请求体上限 9 MiB，单边至多 12000 像素，总像素至多 2400 万；超限返回 413。
+        原文件名不参与存储键生成；每次成功上传生成独立版本，响应仅提供受成员权限保护的缩略图路径。
       x-implementation-status: implemented
       x-task-id: W2-05
       requestBody:
@@ -534,6 +538,8 @@ components:
           enum: [ORGANIZER, PARTICIPANT]
     PhotoMetadata:
       type: object
+      additionalProperties: false
+      description: 不包含原文件名、磁盘路径或原图下载地址；photoVersionId 是版本标识，不是访问凭据。
       required: [photoId, photoVersionId, eventId, thumbnailAvailable, thumbnailUrl, subjectRevision, rosterConfirmed]
       properties:
         photoId:
@@ -549,7 +555,7 @@ components:
           type: boolean
         thumbnailUrl:
           type: string
-          description: 同源 API 路径，读取时携带当前成员令牌
+          description: 同源受保护 API 路径，读取时携带当前活动成员令牌；返回最长边不超过 320 像素且不放大的 PNG，Cache-Control 为 no-store
         subjectRevision:
           $ref: '#/components/schemas/SubjectRevision'
         rosterConfirmed:
