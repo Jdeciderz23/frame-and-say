@@ -18,12 +18,17 @@ import com.groupphoto.consensus.authorization.Publications.Purpose;
 import com.groupphoto.consensus.authorization.Publications.Reason;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -63,6 +68,104 @@ class PhotoWorkflowIntegrationTest {
     private JdbcTemplate jdbc;
     @Autowired
     private ConsentService consents;
+
+    @ParameterizedTest
+    @CsvSource({"jpeg, ../../same.png", "png, ../../same.jpg",
+            "jpeg, C:\\uploads\\same.png", "png, C:\\uploads\\same.jpg"})
+    void keepsUntrustedFilenamesOutOfStorageAndResponses(String format, String filename) throws Exception {
+        String eventId = createEvent("Filename isolation", false);
+        byte[] original = SyntheticImages.image(format, 640, 320);
+        Set<String> versionIds = new HashSet<>();
+        for (int i = 0; i < 2; i++) {
+            String response = mvc.perform(multipart(photosAt(eventId))
+                            .file(new MockMultipartFile("file", filename, "text/plain", original))
+                            .header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                    .andExpect(status().isCreated())
+                    .andReturn().getResponse().getContentAsString();
+            JsonNode metadata = json.readTree(response);
+            assertMetadataFields(metadata);
+            String versionId = metadata.required("photoVersionId").asText();
+            assertThat(UUID.fromString(versionId).toString()).isEqualTo(versionId);
+            assertThat(versionIds.add(versionId)).isTrue();
+            Path directory = storage.resolve(versionId);
+            assertThat(Files.readAllBytes(directory.resolve("original"))).isEqualTo(original);
+            try (var files = Files.list(directory)) {
+                assertThat(files.map(path -> path.getFileName().toString()))
+                        .containsExactlyInAnyOrder("original", "thumbnail.png");
+            }
+            assertThat(jdbc.queryForObject("SELECT media_type FROM photo_versions WHERE id = ?",
+                    String.class, versionId)).isEqualTo("image/" + format);
+
+            String thumbnail = metadata.required("thumbnailUrl").asText();
+            assertThat(thumbnail).isEqualTo(photosAt(eventId) + "/" + metadata.required("photoId").asText()
+                    + "/versions/" + versionId + "/thumbnail");
+            mvc.perform(get(thumbnail)).andExpect(status().isUnauthorized());
+            mvc.perform(get(thumbnail).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                    .andExpect(status().isForbidden());
+            byte[] served = mvc.perform(get(thumbnail).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                    .andExpect(status().isOk())
+                    .andExpect(content().contentType(MediaType.IMAGE_PNG))
+                    .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
+                    .andReturn().getResponse().getContentAsByteArray();
+            assertThat(served).isEqualTo(Files.readAllBytes(directory.resolve("thumbnail.png")));
+            var decoded = SyntheticImages.decode(served);
+            assertThat(decoded.getWidth()).isEqualTo(320);
+            assertThat(decoded.getHeight()).isEqualTo(160);
+            for (String path : new String[]{"/data/photos/" + versionId + "/original",
+                    "/data/photos/" + versionId + "/thumbnail.png",
+                    photosAt(eventId) + "/" + metadata.required("photoId").asText()
+                            + "/versions/" + versionId + "/original"}) {
+                mvc.perform(get(path).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                        .andExpect(status().isNotFound());
+            }
+        }
+        JsonNode listed = json.readTree(mvc.perform(get(photosAt(eventId))
+                        .header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(listed.size()).isEqualTo(2);
+        Set<String> listedVersions = new HashSet<>();
+        for (JsonNode metadata : listed) {
+            assertMetadataFields(metadata);
+            listedVersions.add(metadata.required("photoVersionId").asText());
+        }
+        assertThat(listedVersions).isEqualTo(versionIds);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"jpeg, empty, 400", "png, empty, 400", "jpeg, fake, 415", "png, fake, 415",
+            "jpeg, bytes, 413", "png, bytes, 413", "jpeg, pixels, 413", "png, pixels, 413"})
+    void rejectsInvalidUploadsWithoutLeavingFilesOrRows(String format, String scenario, int statusCode) throws Exception {
+        String eventId = createEvent("Rejected upload", false);
+        Set<Path> before;
+        try (var paths = Files.list(storage)) {
+            before = paths.collect(java.util.stream.Collectors.toSet());
+        }
+        byte[] bytes = switch (scenario) {
+            case "empty" -> new byte[0];
+            case "fake" -> new byte[]{1, 2, 3};
+            case "bytes" -> new byte[8 * 1024 * 1024 + 1];
+            case "pixels" -> SyntheticImages.image(format, 6000, 4001);
+            default -> throw new IllegalArgumentException(scenario);
+        };
+        mvc.perform(multipart(photosAt(eventId))
+                        .file(new MockMultipartFile("file", "invalid." + format, "image/" + format, bytes))
+                        .header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().is(statusCode))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM photos WHERE event_id = ?", Long.class, eventId)).isZero();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM photo_versions WHERE event_id = ?", Long.class, eventId)).isZero();
+        try (var paths = Files.list(storage)) {
+            assertThat(paths.collect(java.util.stream.Collectors.toSet())).isEqualTo(before);
+        }
+    }
+
+    private static void assertMetadataFields(JsonNode metadata) {
+        Set<String> fields = new HashSet<>();
+        metadata.fieldNames().forEachRemaining(fields::add);
+        assertThat(fields).containsExactlyInAnyOrder("photoId", "photoVersionId", "eventId", "thumbnailAvailable",
+                "thumbnailUrl", "subjectRevision", "rosterConfirmed");
+        assertThat(metadata.required("thumbnailAvailable").asBoolean()).isTrue();
+    }
 
     @Test
     void validatesUploadAndServesThumbnailOnlyInItsMemberActivity() throws Exception {
@@ -220,8 +323,7 @@ class PhotoWorkflowIntegrationTest {
     }
 
     private static MockMultipartFile image(String format) throws Exception {
-        var output = new ByteArrayOutputStream();
-        ImageIO.write(new BufferedImage(640, 320, BufferedImage.TYPE_INT_RGB), format, output);
-        return new MockMultipartFile("file", "synthetic." + format, "image/" + format, output.toByteArray());
+        return new MockMultipartFile("file", "synthetic." + format, "image/" + format,
+                SyntheticImages.image(format, 640, 320));
     }
 }
