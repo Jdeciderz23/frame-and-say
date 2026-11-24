@@ -11,6 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.groupphoto.consensus.support.SyntheticActors;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,6 +21,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:event_membership_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
@@ -59,7 +62,7 @@ class EventMembershipIntegrationTest {
 
     @Test
     void createsOwnerAtomicallyAndScopesEventAccessToMembers() throws Exception {
-        String eventId = createEvent("Studio");
+        String eventId = createEvent("Studio", 3);
         assertThat(jdbc.queryForObject("SELECT role FROM event_members WHERE event_id = ? AND user_id = ?",
                 String.class, eventId, "organizer")).isEqualTo("ORGANIZER");
 
@@ -92,13 +95,56 @@ class EventMembershipIntegrationTest {
                 .andExpect(jsonPath("$[?(@.id == '" + eventId + "')].name").value("Studio"));
     }
 
-    private String createEvent(String name) throws Exception {
-        String response = mvc.perform(post("/api/events").header(HttpHeaders.AUTHORIZATION, ORGANIZER)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(json.createObjectNode().put("name", name).put("desiredPhotoCount", 3).toString()))
+    @Test
+    void enforcesEventNameBoundaries() throws Exception {
+        assertCreationRejected("   ", 3);
+
+        String longestName = "秋".repeat(80);
+        String eventId = createEvent(longestName, 3);
+        assertThat(jdbc.queryForObject("SELECT name FROM events WHERE id = ?", String.class, eventId))
+                .isEqualTo(longestName);
+
+        assertCreationRejected(longestName + "游", 3);
+    }
+
+    @Test
+    void trimsOuterSpacesAndPreservesConsecutiveInnerSpaces() throws Exception {
+        String eventId = createEvent(" 秋游  合照 ", 3);
+        assertThat(jdbc.queryForObject("SELECT name FROM events WHERE id = ?", String.class, eventId))
+                .isEqualTo("秋游  合照");
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 100})
+    void storesDesiredPhotoCountAtEitherLimit(int count) throws Exception {
+        String eventId = createEvent("秋游", count);
+        assertThat(jdbc.queryForObject("SELECT desired_photo_count FROM events WHERE id = ?", Integer.class, eventId))
+                .isEqualTo(count);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 101})
+    void rejectsDesiredPhotoCountOutsideTheLimits(int count) throws Exception {
+        assertCreationRejected("秋游", count);
+    }
+
+    private void assertCreationRejected(String name, int desiredPhotoCount) throws Exception {
+        Long countBefore = jdbc.queryForObject("SELECT COUNT(*) FROM events", Long.class);
+        postEvent(name, desiredPhotoCount).andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM events", Long.class)).isEqualTo(countBefore);
+    }
+
+    private ResultActions postEvent(String name, int desiredPhotoCount) throws Exception {
+        return mvc.perform(post("/api/events").header(HttpHeaders.AUTHORIZATION, ORGANIZER)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.createObjectNode().put("name", name).put("desiredPhotoCount", desiredPhotoCount).toString()));
+    }
+
+    private String createEvent(String name, int desiredPhotoCount) throws Exception {
+        String response = postEvent(name, desiredPhotoCount)
                 .andExpect(status().isCreated())
                 .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE))
-                .andExpect(jsonPath("$.desiredPhotoCount").value(3))
+                .andExpect(jsonPath("$.desiredPhotoCount").value(desiredPhotoCount))
                 .andReturn().getResponse().getContentAsString();
         return json.readTree(response).required("id").asText();
     }
