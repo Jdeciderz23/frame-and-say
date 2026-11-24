@@ -1,6 +1,6 @@
-# W2-05 图片上传、缩略图与持久化验证
+# 图片上传、缩略图与持久化验证
 
-2026-11-24（北京时间），对应 [#13](https://github.com/Jdeciderz23/frame-and-say/issues/13)，基于主线 `bd2c171`。本次验证使用合成图片和两个演示身份。W1-05 的输入边界回归见 [PR #56](https://github.com/Jdeciderz23/frame-and-say/pull/56)，两个分支可独立评审。
+2026-11-24（北京时间），对应 [#13](https://github.com/Jdeciderz23/frame-and-say/issues/13)，基于主线 `bd2c171`。本次验证使用合成图片和两个演示身份。输入边界回归另见 [PR #56](https://github.com/Jdeciderz23/frame-and-say/pull/56)。
 
 ## 验收场景
 
@@ -14,7 +14,7 @@
 | V1/V2 | 测试先使用上传 API 创建 V1 并确认名单，再用独立文件和数据库记录构造 V2。列表仅返回该照片最新版本，V2 名单尚未确认；各版本地址读取自己的缩略图，V1 原图与缩略图不被覆盖。新版本上传 API 属于 [US-21 / #39](https://github.com/Jdeciderz23/frame-and-say/issues/39)。 |
 | 重启一致性 | 重启之前记录完整照片元数据、两份原图和两份缩略图的 SHA-256。重启后用原活动成员读取，列表、版本标识和哈希相同，缩略图仍拒绝匿名请求。 |
 
-活动隔离、权限失败顺序与 [lzndXJ 的 #7 评审记录](https://github.com/Jdeciderz23/frame-and-say/issues/7#issuecomment-7129522773)对照。PR 评审时请照片接口维护方与 lzndXJ 复核新增场景，重点是不同活动下的 `403/404` 与存储不可读时的 `503`。
+活动隔离与权限检查的顺序见[接口约定](https://github.com/Jdeciderz23/frame-and-say/issues/7#issuecomment-7129522773)。
 
 ## 本机实测
 
@@ -25,6 +25,7 @@ Windows / Temurin 21.0.13.1 / Maven 3.9.9 / Node 24.22.3 / pnpm 11.25.0：
 - 启动打包的后端 JAR，使用 `demo` 配置并将 `SPRING_DATASOURCE_URL` 指向独立的文件型 H2 数据库。为同一轮检查设置专用 `APP_PHOTO_DIR`，两次启动均使用同一数据库、存储目录及临时演示令牌。使用 Nginx 1.28.3 Windows 便携版，沿用 [Nginx 配置](../../frontend/nginx.conf)的代理位置、`9m` 限额和 413 处理，替换 Docker DNS 上游为本机地址。依次执行：
 
   ```powershell
+  $state = (New-TemporaryFile).FullName
   node scripts/smoke-photo-storage.mjs create $state --nginx
   # 停止并用相同配置重新启动后端，等待 readiness 返回 UP。
   node scripts/smoke-photo-storage.mjs verify $state --nginx
@@ -37,6 +38,7 @@ Windows / Temurin 21.0.13.1 / Maven 3.9.9 / Node 24.22.3 / pnpm 11.25.0：
 仓库的 `mysql-compose` CI 在原有业务冒烟之外运行图片专项检查。下列命令适用于已按 README 初始化的专用测试 Compose 项目，设置独立项目名及空闲端口，避免使用已有业务数据卷。
 
 ```sh
+state="$(mktemp)"
 docker compose --profile app up -d --build --wait
 node --env-file=.env scripts/smoke-photo-storage.mjs create "$state" --compose
 docker compose --profile app stop frontend backend mysql
@@ -47,5 +49,3 @@ node --env-file=.env scripts/smoke-photo-storage.mjs verify "$state" --compose
 `$state` 指向专用临时状态文件。Compose 模式通过 Nginx 调用 API，并在后端容器内只读核对图片卷中的原图及缩略图。结束后清理专用测试项目和临时状态文件。
 
 Windows 和 Ubuntu WSL 未具备 Docker CLI，本机实测覆盖 Nginx + 文件型 H2。MySQL Compose 的新增场景以本分支的远程 CI 结果为准。当前 `MINIO_IMAGE` 为空，未验证镜像、服务和私有桶，MinIO 适配器联调继续阻塞。待具备已核验镜像和测试环境后，先拉取并检查私有桶，再验收适配器。
-
-Codex 协助编写测试、执行实测和整理契约说明。测试使用合成图片；本分支的人工作业复核和组员评审待进行。
