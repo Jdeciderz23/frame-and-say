@@ -11,7 +11,11 @@ describe('health API contract', () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 'UP', application: 'group-photo-consensus' })))
     vi.stubGlobal('fetch', fetchMock)
     await expect(getHealth()).resolves.toEqual({ status: 'UP', application: 'group-photo-consensus' })
-    expect(fetchMock).toHaveBeenCalledWith('/api/health', expect.objectContaining({ signal: expect.any(AbortSignal) }))
+    expect(fetchMock).toHaveBeenCalledWith('/api/health', expect.objectContaining({
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+      signal: expect.any(AbortSignal),
+    }))
   })
 
   it('rejects HTTP failures rather than showing success', async () => {
@@ -31,7 +35,7 @@ describe('health API contract', () => {
 
   it('rejects invalid JSON instead of crashing the page', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>not JSON</html>')))
-    await expect(getHealth()).rejects.toThrow('无法读取健康检查结果')
+    await expect(getHealth()).rejects.toThrow('不符合接口约定')
   })
 
   it('aborts an unresponsive request after five seconds', async () => {
