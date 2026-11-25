@@ -1,6 +1,7 @@
 package com.groupphoto.consensus.photo;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -43,6 +44,11 @@ class LocalPhotoStorage implements PhotoStorage {
     @Override
     public byte[] readThumbnail(UUID versionId) throws IOException {
         return Files.readAllBytes(directory(versionId).resolve("thumbnail.png"));
+    }
+
+    @Override
+    public InputStream openOriginal(UUID versionId) throws IOException {
+        return Files.newInputStream(directory(versionId).resolve("original"));
     }
 
     @Override
