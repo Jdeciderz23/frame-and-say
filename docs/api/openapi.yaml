@@ -132,6 +132,94 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/events/{eventId}/confirmed-selections:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    post:
+      operationId: confirmSelectionForExport
+      summary: 发起人确认本次交付清单
+      description: 校验准确版本、用途和名单修订，保存不可变的清单。每张照片最多出现一次。
+      x-implementation-status: implemented
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [purpose, items]
+              properties:
+                purpose:
+                  $ref: '#/components/schemas/Purpose'
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    $ref: '#/components/schemas/ReviewedPhoto'
+      responses:
+        '201':
+          description: 已确认清单，导出时使用 selectionId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfirmedSelection'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/events/{eventId}/confirmed-selections/{selectionId}/export:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - name: selectionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: exportConfirmedPhotos
+      summary: 发起人复核并下载清单中的原图 ZIP
+      x-implementation-status: implemented
+      description: >-
+        导出从服务端确认清单读取用途、版本和名单修订。每次下载均复核发起人身份和当前授权。
+        任一条目不再有效时返回 409，整个请求不交付任何图片。
+      responses:
+        '200':
+          description: 只包含所确认版本原图的 ZIP，条目按清单顺序排列
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-store
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          description: 读取原图或准备 ZIP 失败，未交付文件
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/events/{eventId}/photos:
     parameters:
       - $ref: '#/components/parameters/EventId'
@@ -549,6 +637,35 @@ components:
         role:
           type: string
           enum: [ORGANIZER, PARTICIPANT]
+    ReviewedPhoto:
+      type: object
+      additionalProperties: false
+      required: [photoId, photoVersionId, subjectRevision]
+      properties:
+        photoId:
+          type: string
+          format: uuid
+        photoVersionId:
+          type: string
+          format: uuid
+        subjectRevision:
+          $ref: '#/components/schemas/SubjectRevision'
+    ConfirmedSelection:
+      type: object
+      required: [selectionId, eventId, purpose, items]
+      properties:
+        selectionId:
+          type: string
+          format: uuid
+        eventId:
+          type: string
+          format: uuid
+        purpose:
+          $ref: '#/components/schemas/Purpose'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewedPhoto'
     PhotoMetadata:
       type: object
       additionalProperties: false
