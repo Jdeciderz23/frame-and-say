@@ -35,7 +35,7 @@ function refreshAfterConflict() {
   else readAttempt.value++
 }
 
-watch([purpose, readAttempt], async ([currentPurpose], _, cleanup) => {
+watch([purpose, readAttempt], async ([currentPurpose, attempt], [, previousAttempt], cleanup) => {
   const controller = new AbortController()
   cleanup(() => controller.abort())
   loading.value = true
@@ -48,7 +48,12 @@ watch([purpose, readAttempt], async ([currentPurpose], _, cleanup) => {
     const result = await readConsent(props.eventId, props.photo, props.token, currentPurpose, controller.signal)
     if (!controller.signal.aborted) consent.value = result
   } catch (cause) {
-    if (!controller.signal.aborted) handleError(cause, 'photo')
+    if (controller.signal.aborted) return
+    if (attempt > 0 && attempt !== previousAttempt && cause instanceof AlbumRequestError && cause.status === 409) {
+      emit('refresh')
+    } else {
+      handleError(cause, 'photo')
+    }
   } finally {
     if (!controller.signal.aborted) loading.value = false
   }

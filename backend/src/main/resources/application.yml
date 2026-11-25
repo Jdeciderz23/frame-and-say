@@ -19,6 +19,7 @@ spring:
 
 app:
   bootstrap:
+    enabled: false
     organizer-token: ${APP_BOOTSTRAP_ORGANIZER_TOKEN:}
     participant-token: ${APP_BOOTSTRAP_PARTICIPANT_TOKEN:}
 
