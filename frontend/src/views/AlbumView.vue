@@ -6,6 +6,7 @@ import PhotoThumbnail from '../components/PhotoThumbnail.vue'
 import { selectionTargetEditor } from '../components/selectionTargetEditor'
 import SelectionTarget from '../components/SelectionTarget.vue'
 import PhotoPreference from '../components/PhotoPreference.vue'
+import PhotoConsent from '../components/PhotoConsent.vue'
 import PhotoUploadForm from '../components/PhotoUploadForm.vue'
 
 const route = useRoute()
@@ -163,6 +164,7 @@ watch([token, event], (_, __, cleanup) => {
           <h3 id="photo-heading">照片 {{ activePhotoNumber }}</h3>
           <PhotoThumbnail :event-id="event.id" :photo="activePhoto" :token="token" :alt="`照片 ${activePhotoNumber} 缩略图`" />
           <PhotoPreference :event-id="event.id" :photo="activePhoto" :token="token" @refresh="refreshPhotos" />
+          <PhotoConsent :event-id="event.id" :photo="activePhoto" :token="token" @refresh="refreshPhotos" />
         </section>
         <ul v-else class="photo-grid">
           <li v-for="(photo, index) in photos" :key="photo.photoVersionId">
