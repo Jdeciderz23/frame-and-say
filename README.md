@@ -13,7 +13,7 @@
 
 ## 本地运行
 
-需要 Java 21、Node.js 24 和 pnpm 11.25.0，Maven 由 Wrapper 提供。在仓库根目录运行：
+需要 Java 21、Node.js 24 和 pnpm 11.25.0，Maven 由 Wrapper 提供。使用 Windows PowerShell 时见 [Windows 本地启动](docs/windows-local-development.md#powershell-启动)。使用 Shell 时，在仓库根目录运行：
 
 ```sh
 ./scripts/init-env.sh
@@ -22,8 +22,6 @@ pnpm --dir frontend install --frozen-lockfile
 ```
 
 打开 [http://127.0.0.1:5173](http://127.0.0.1:5173)。后端运行在 `8080`，默认使用内存 H2，重启后演示数据会清空。初始化脚本会在本地 `.env` 生成用于体验 API 的测试令牌。
-
-Windows 上可以用 PowerShell 调用 `mvnw.cmd` 构建后端，再用同一个 Node 启动入口运行前后端。命令和健康检查见 [W1-08 启动复现与协作核查](docs/11-startup-and-ci-audit.md#本机复现)。
 
 需要持久化存储时，先启动 Docker，再运行：
 
