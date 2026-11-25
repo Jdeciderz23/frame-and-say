@@ -11,9 +11,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Repository
 public class PhotoCatalog {
     private static final String VERSION_COLUMNS = """
-            SELECT photo_id, id AS photo_version_id, event_id, version_number,
-                   subject_revision, roster_confirmed, media_type
-            FROM photo_versions
+            SELECT v.photo_id, v.id AS photo_version_id, v.event_id, v.version_number,
+                   v.subject_revision, v.roster_confirmed, v.media_type
+            FROM photo_versions v JOIN photos p ON p.id = v.photo_id AND p.event_id = v.event_id
             """;
 
     public record Version(String photoId, String photoVersionId, String eventId, int versionNumber,
@@ -28,21 +28,31 @@ public class PhotoCatalog {
     }
 
     PhotoOwner requirePhotoOwner(String eventId, String photoId) {
-        return jdbc.sql("SELECT uploader_id FROM photos WHERE event_id = :eventId AND id = :photoId")
+        return jdbc.sql("""
+                SELECT uploader_id FROM photos
+                WHERE event_id = :eventId AND id = :photoId AND deleted_at IS NULL
+                """)
+                .param("eventId", eventId).param("photoId", photoId).query(PhotoOwner.class).optional()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Photo not found"));
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    PhotoOwner lockPhoto(String eventId, String photoId) {
+        return jdbc.sql("SELECT uploader_id FROM photos WHERE event_id = :eventId AND id = :photoId FOR UPDATE")
                 .param("eventId", eventId).param("photoId", photoId).query(PhotoOwner.class).optional()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Photo not found"));
     }
 
     List<Version> versions(String eventId, String photoId) {
         return jdbc.sql(VERSION_COLUMNS + """
-                WHERE event_id = :eventId AND photo_id = :photoId
-                ORDER BY version_number DESC
+                WHERE v.event_id = :eventId AND v.photo_id = :photoId AND p.deleted_at IS NULL
+                ORDER BY v.version_number DESC
                 """).param("eventId", eventId).param("photoId", photoId).query(Version.class).list();
     }
 
     public Version requireVersion(String eventId, String photoId, String photoVersionId) {
         return jdbc.sql(VERSION_COLUMNS + """
-                WHERE event_id = :eventId AND photo_id = :photoId AND id = :versionId
+                WHERE v.event_id = :eventId AND v.photo_id = :photoId AND v.id = :versionId AND p.deleted_at IS NULL
                 """).param("eventId", eventId).param("photoId", photoId).param("versionId", photoVersionId)
                 .query(Version.class).optional()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Photo version not found"));
@@ -59,13 +69,10 @@ public class PhotoCatalog {
         return version;
     }
 
-    // Releases at transaction end. New versions must take the same photo lock.
+    // Version creation, authorization, export and deletion take the same photo lock.
     @Transactional(propagation = Propagation.MANDATORY)
     public Version lockCurrentVersion(String eventId, String photoId, String photoVersionId) {
-        jdbc.sql("SELECT id FROM photos WHERE event_id = :eventId AND id = :photoId FOR UPDATE")
-                .param("eventId", eventId).param("photoId", photoId)
-                .query(String.class).optional()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Photo not found"));
+        lockPhoto(eventId, photoId);
         return requireCurrentVersion(eventId, photoId, photoVersionId);
     }
 
@@ -79,11 +86,8 @@ public class PhotoCatalog {
     }
 
     List<Version> currentVersions(String eventId) {
-        return jdbc.sql("""
-                SELECT v.photo_id, v.id AS photo_version_id, v.event_id, v.version_number,
-                       v.subject_revision, v.roster_confirmed, v.media_type
-                FROM photo_versions v
-                WHERE v.event_id = :eventId AND NOT EXISTS (
+        return jdbc.sql(VERSION_COLUMNS + """
+                WHERE v.event_id = :eventId AND p.deleted_at IS NULL AND NOT EXISTS (
                     SELECT 1 FROM photo_versions newer
                     WHERE newer.photo_id = v.photo_id AND newer.version_number > v.version_number
                 )

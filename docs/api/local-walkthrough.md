@@ -60,6 +60,21 @@ node --env-file=.env scripts/smoke-reviewed-export.mjs create "$EXPORT_STATE"
 
 示例 ZIP 位于 `"$EXPORT_STATE.zip"`。使用持久化数据库时，可在重启后执行 `node --env-file=.env scripts/smoke-reviewed-export.mjs verify "$EXPORT_STATE"`，验证同一清单仍拒绝交付。完成后删除状态文件和样例 ZIP。
 
+## 申请删除活动照片
+
+原上传者用本人令牌向 `POST /api/events/{eventId}/photos/{photoId}/deletion-request` 提交申请。发起人通过 `GET /api/events/{eventId}/photo-deletion-requests` 查找申请，再以 `PUT /api/events/{eventId}/photos/{photoId}/deletion-request/approval` 批准。申请者或发起人可读取该照片的 `GET .../deletion-request`，核对申请人、处理人、时间和状态。
+
+处理前，缩略图和已有合法导出仍可读取。批准后，相册移除整张照片，各版本旧链接返回 `404`，包含该照片的确认清单返回 `409`，发起人可重新确认仍有效的照片。处理记录和私有文件保留，实际清理与保留期限另行确定。未记载上传者的旧照片不能通过此流程申请。
+
+用合成数据复验本流程：
+
+```sh
+DELETE_STATE=$(mktemp "${TMPDIR:-/tmp}/frame-and-say-deletion.XXXXXX")
+node --env-file=.env scripts/smoke-photo-deletion.mjs create "$DELETE_STATE"
+```
+
+如果使用持久化数据库，可在重启后运行 `node --env-file=.env scripts/smoke-photo-deletion.mjs verify "$DELETE_STATE"`，核对已批准记录、旧链接和确认清单。结束后删除临时状态文件。
+
 ## 图片存储与输入边界回归
 
 在仓库根目录执行：

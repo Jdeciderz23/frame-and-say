@@ -60,6 +60,8 @@ jobs:
         run: node --env-file=.env scripts/smoke-photo-storage.mjs create "$RUNNER_TEMP/frame-say-photos.json" --compose
       - name: Verify reviewed delivery and consent revocation
         run: node --env-file=.env scripts/smoke-reviewed-export.mjs create "$RUNNER_TEMP/frame-say-export.json"
+      - name: Verify approved deletion hides versions and invalidates delivery
+        run: node --env-file=.env scripts/smoke-photo-deletion.mjs create "$RUNNER_TEMP/frame-say-deletion.json"
       - name: Restart MySQL and the backend and verify persistence
         run: |
           docker compose --profile app stop frontend backend mysql
@@ -67,6 +69,7 @@ jobs:
           node --env-file=.env scripts/smoke-compose.mjs verify "$RUNNER_TEMP/frame-say-smoke.json"
           node --env-file=.env scripts/smoke-photo-storage.mjs verify "$RUNNER_TEMP/frame-say-photos.json" --compose
           node --env-file=.env scripts/smoke-reviewed-export.mjs verify "$RUNNER_TEMP/frame-say-export.json"
+          node --env-file=.env scripts/smoke-photo-deletion.mjs verify "$RUNNER_TEMP/frame-say-deletion.json"
       - if: failure()
         run: docker compose --profile app logs --no-color --tail 80
       - if: always()
