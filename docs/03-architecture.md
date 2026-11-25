@@ -58,6 +58,34 @@ flowchart LR
 
 ## 推荐开发起点
 
-现有策略基线用于判定候选是否满足授权条件。成员 4 接着实现选片用例和结构化解释。应用用例先校验访问范围，并为每个可见版本取得授权结论，再把包含该结论在内的不可变候选、偏好和目标数量交给纯 Java 算法；授权过滤与排除计数由 `CandidateFilter` 一次完成，不在应用层预先剔除被拒照片，以免丢失 `AUTHORIZATION_REQUIRED` 等计数。候选不足时返回实际数量和汇总原因码。公开结果应只展示人数、分布或汇总效用等经过确认的指标。算法输入输出与校验规则见 [推荐输入输出契约](api/recommendation-dto.md)。
+推荐模块负责选片和结果解释。应用层先校验访问范围，为每个可见照片版本取得授权结论，再把带有结论的候选版本、成员偏好和目标数量交给纯 Java 推荐模块。`CandidateFilter` 在过滤候选时一并统计排除原因，对当前用途已拒绝或待确认的版本计入 `AUTHORIZATION_REQUIRED`。候选不足时，过滤结果给出可用候选和数量缺口。对外只展示汇总原因和经确认的指标。输入输出与校验规则见[推荐输入输出契约](api/recommendation-dto.md)。
 
-对算法作业，可先用完整的模拟评分比较贪心方案和按总分排序。尝试优先改善最低个人效用，同分比较总效用，再用版本 ID 稳定排序。未评分处理、效用定义和目标权重由成员 4 提案，经团队评审确认。正式用例见 [选片接口草案](api/openapi.yaml)。
+推荐算法使用完整的模拟评分比较贪心方案与总分排序。尝试优先改善最低个人效用，同分比较总效用，再用版本 ID 稳定排序。未评分处理、效用定义和目标权重由推荐模块维护者提案，经团队评审确认。正式用例见 [选片接口草案](api/openapi.yaml)。
+
+## 数据实体与授权接口
+
+下图对应 Flyway V1、V2。多处使用包含活动 ID 的复合外键防止跨活动引用。
+
+```mermaid
+erDiagram
+  events ||--o{ event_members : contains
+  events ||--o{ photos : contains
+  photos ||--|{ photo_versions : versions
+  photo_versions ||--o{ photo_subjects : roster
+  event_members ||--o{ photo_subjects : appears
+  photo_versions ||--o{ photo_preferences : rated
+  event_members ||--o{ photo_preferences : rates
+  photo_subjects ||--o{ photo_consents : decides
+```
+
+| 操作与写入方 | 可验证的 API 示例与可见范围 |
+|---|---|
+| 活动／成员模块分别维护 events、event_members | `createEvent` 创建发起人成员关系，`listEventMembers` 仅供本活动成员 |
+| 照片模块维护 photos、photo_versions、photo_subjects | `confirmPhotoSubjects` 仅发起人可写正式名单，提交旧修订返回 409；纠错建议入口属候选 |
+| 偏好模块维护 photo_preferences | `setMyPreference` 只写自己的版本评分，0 和缺少记录分别表示中性、未评 |
+| 授权模块维护 photo_consents | `getMyPublicationConsent` 读取本人状态，`setMyPublicationConsent` 限当次名单中的本人；同一版本、用途和修订分别判定 |
+| 推荐模块消费结论 | `selectPhotos` 为规划端点。发起人拟看可用与需处理的照片，公开解释仅给汇总。本人可见自己的具体决定，普通成员和管理员均无逐人决定清单 |
+
+接口变更在 [#7](https://github.com/Jdeciderz23/frame-and-say/issues/7) 跟踪。可用两场活动、两名成员、两个用途和一次名单变更走查 US-04、06、07、09，再记录审阅人、问题、结论和对应 PR。
+
+**接口走查样例（合成数据）**　以本活动成员 B 的令牌调用 `PUT /api/events/{E}/photos/{P}/consents/me`，其中 E、P 换成已创建的活动和照片 ID，V 换成实际版本 UUID。请求体为 `{"photoVersionId":"V","subjectRevision":2,"purpose":"INTERNAL_SHARE","decision":"ALLOW"}`。B 在修订 2 的名单中时预期返回 204。发起人随后修改名单，B 用修订 2 再次提交应返回 409。读取 `GET /api/events/{E}/photos/{P}/consents/me?photoVersionId=V&purpose=PUBLIC_POST` 只能取得当前用户在公开用途下的状态。逐步操作见[本机 API 联调](api/local-walkthrough.md)。
