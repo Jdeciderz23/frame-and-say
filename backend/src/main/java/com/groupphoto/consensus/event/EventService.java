@@ -25,7 +25,7 @@ class EventService {
         jdbc.update("INSERT INTO events (id, name, desired_photo_count) VALUES (?, ?, ?)",
                 eventId, displayName, desiredPhotoCount);
         members.addOrganizer(eventId, actorId);
-        return new Event(eventId, displayName, desiredPhotoCount, "ORGANIZER");
+        return new Event(eventId, displayName, desiredPhotoCount);
     }
 
     public List<Event> list(String actorId) {
@@ -43,5 +43,10 @@ class EventService {
         jdbc.update("UPDATE events SET desired_photo_count = ? WHERE id = ?", desiredPhotoCount, eventId);
     }
 
-    public record Event(String id, String name, Integer desiredPhotoCount, String memberRole) {}
+    public record Event(String id, String name, Integer desiredPhotoCount, String memberRole) {
+        // Only creation uses this constructor. Listing supplies the role of the requesting member.
+        private Event(String id, String name, Integer desiredPhotoCount) {
+            this(id, name, desiredPhotoCount, "ORGANIZER");
+        }
+    }
 }
