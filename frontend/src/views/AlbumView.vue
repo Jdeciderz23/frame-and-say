@@ -5,6 +5,7 @@ import { albumError, listEvents, listPhotos, type AlbumEvent, type AlbumPhoto } 
 import PhotoThumbnail from '../components/PhotoThumbnail.vue'
 import { selectionTargetEditor } from '../components/selectionTargetEditor'
 import SelectionTarget from '../components/SelectionTarget.vue'
+import PhotoPreference from '../components/PhotoPreference.vue'
 import PhotoUploadForm from '../components/PhotoUploadForm.vue'
 
 const route = useRoute()
@@ -156,10 +157,12 @@ watch([token, event], (_, __, cleanup) => {
       </div>
       <p v-else-if="!photos.length">这个活动还没有照片。</p>
       <template v-else>
+        <p v-if="route.query.photo && !activePhoto" role="status">原照片版本已不可用，请从列表重新打开。</p>
         <section v-if="activePhoto" :key="activePhoto.photoVersionId" class="photo-detail" aria-labelledby="photo-heading">
           <button type="button" class="button secondary" @click="openPhoto()">返回照片列表</button>
           <h3 id="photo-heading">照片 {{ activePhotoNumber }}</h3>
           <PhotoThumbnail :event-id="event.id" :photo="activePhoto" :token="token" :alt="`照片 ${activePhotoNumber} 缩略图`" />
+          <PhotoPreference :event-id="event.id" :photo="activePhoto" :token="token" @refresh="refreshPhotos" />
         </section>
         <ul v-else class="photo-grid">
           <li v-for="(photo, index) in photos" :key="photo.photoVersionId">
