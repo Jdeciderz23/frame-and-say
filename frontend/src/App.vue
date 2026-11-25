@@ -14,6 +14,5 @@
   <main id="main-content" tabindex="-1"><RouterView /></main>
   <footer class="site-footer">
     <span>好照片，也要让照片里的人安心。</span>
-    <span>本科软件工程课程设计 · 项目启动阶段</span>
   </footer>
 </template>
