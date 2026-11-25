@@ -2,7 +2,7 @@
 
 对应代码：`backend/src/main/java/com/groupphoto/consensus/recommendation/`，纯 Java，不依赖 Spring，也不访问数据库。
 
-当前状态：**输入校验与候选过滤已实现**。选片接口 [`POST /api/events/{eventId}/selections`](openapi.yaml) 为 `planned`，排序与效用计算见 [#12](https://github.com/Jdeciderz23/frame-and-say/issues/12)。
+当前状态：**输入校验、候选过滤与确定性公平选择算法已实现**。选片接口 [`POST /api/events/{eventId}/selections`](openapi.yaml) 仍为 `planned`，薄接口接线在契约确认后接入。
 
 本文件定义“应用用例交给算法什么”和“算法能返回什么”：先列当前可用的能力，再给出输入/输出契约、待确认的规则与验证方法。
 
@@ -14,7 +14,8 @@
 | 结构校验 | `SelectionInputValidator.validate` / `requireValid` | 一次返回全部问题；`requireValid` 在有问题时抛 `InvalidSelectionInputException` |
 | 候选过滤 | `CandidateFilter.filter` | 只放行 `eligible = true` 且 `reason = ELIGIBLE`，按原因计数并给出缺口 |
 | 对外原因码 | `FilteredCandidates.toReasonCounts` | 汇总 `ROSTER_UNCONFIRMED` / `AUTHORIZATION_REQUIRED` / `INSUFFICIENT_CANDIDATES` |
-| 结果结构 | `SelectionResult` | 与 OpenAPI `Selection` 一致；排序与效用计算待 #12 |
+| 结果结构 | `SelectionResult` | 与 OpenAPI `Selection` 一致 |
+| 公平选择 | `FairSelector.select` | 贪心 max-min 选择，输出确定选片、效用指标与不足原因（#12） |
 
 ## 输入
 
@@ -95,14 +96,23 @@
 
 样例不含真实照片、真实用户或伪造的真实偏好，可通过 JUnit 重复运行，结果一致（`CandidateFilterTest` 有确定性断言）。
 
+## 公平选择算法（#12）
+
+`FairSelector.select(input)` 是唯一入口：结构校验 → 硬约束过滤 → 贪心 max-min 选择 → 汇总指标与原因，返回 `SelectionResult`。
+
+- **成员效用** = 该成员对已入选照片的评分之和；未评分（`null`）按 0 计入，与评分为 0 同等参与求和。
+- **贪心 max-min**：每步在剩余可选候选中选一个，使「最小成员效用」最大；并列比较总效用；仍并列按 `photoVersionId` 字典序取最小者。结果确定、可重复。
+- **指标**：`eligiblePhotoCount` 为可选候选数；`minimumMemberUtility` / `totalMemberUtility` 由算法计算。成员为空时 `minimumMemberUtility` 为 `null`（无成员可求最小值）。
+- **完整度**：凑够 `requestedCount` 时 `complete = true`；否则选中全部可选候选并 `complete = false`，`reasons` 由 `FilteredCandidates.toReasonCounts()` 给出（含 `INSUFFICIENT_CANDIDATES` 缺口）。
+
+这是启发式贪心，**不保证全局最优（leximin 公平解）**：它只看当前一步的最小效用，不做回溯。`FairSelectorTest` 的 `fairSelectionSacrificesTotalUtilityToRaiseTheMinimum` 构造了偏好分歧案例，说明公平选择会牺牲总效用、抬高最低效用，并与普通总分排序对比。
+
 ## 待团队确认的技术问题
 
-以下条目尚未定稿，需在排序与效用计算（[#12](https://github.com/Jdeciderz23/frame-and-say/issues/12)）连同团队评审后写入正式契约：
+以下条目仍需连同团队评审后写入正式契约：
 
 1. 评分档位维持 `-1 / 0 / 1` 三档。
-2. 未评分在效用计算中的处理（按 0 计、或排除该成员对该照片的计入）尚未定；当前只保证“未评分 ≠ 0”不会在输入阶段被抹平。
-3. 成员效用暂定为该成员对入选照片评分之和；公平性先最大化最低成员效用，再比较总效用，最后按版本 ID 稳定排序——将在 #12 用构造案例验证后定稿。
-4. 目标数量缺省取活动的 `desiredPhotoCount`。
+2. 目标数量缺省取活动的 `desiredPhotoCount`。
 
 ## 运行
 
