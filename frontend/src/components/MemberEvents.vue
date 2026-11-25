@@ -1,66 +1,13 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { AlbumRequestError, albumError, createEvent, listEvents, type AlbumEvent } from '../api/album'
+import { onBeforeUnmount, onMounted } from 'vue'
+import { useMemberEvents } from './useMemberEvents'
 
 const props = defineProps<{ token: string }>()
 const session = new AbortController()
-const events = ref<AlbumEvent[]>([])
-const name = ref('')
-const count = ref<number | ''>('')
-const loading = ref(false)
-const saving = ref(false)
-const listError = ref('')
-const formError = ref('')
-const confirmation = ref('')
-
-async function refresh() {
-  if (loading.value) return
-  loading.value = true
-  listError.value = ''
-  try {
-    events.value = await listEvents(props.token, session.signal)
-  } catch (error) {
-    if (!session.signal.aborted) {
-      events.value = []
-      listError.value = albumError(error)
-    }
-  } finally {
-    loading.value = false
-  }
-}
-
-async function submit() {
-  if (saving.value || loading.value || listError.value) return
-  formError.value = ''
-  confirmation.value = ''
-  if (!name.value.trim() || name.value.length > 80) {
-    formError.value = '请填写 1 至 80 个字符的活动名称。'
-    return
-  }
-  const target = count.value === '' ? undefined : count.value
-  if (target !== undefined && (!Number.isInteger(target) || target < 1 || target > 100)) {
-    formError.value = '目标选片数须为 1 至 100 之间的整数。'
-    return
-  }
-  saving.value = true
-  try {
-    const created = await createEvent({ name: name.value, desiredPhotoCount: target }, props.token, session.signal)
-    if (session.signal.aborted) return
-    confirmation.value = '已创建「' + created.name + '」。'
-    name.value = ''
-    count.value = ''
-    await refresh()
-  } catch (error) {
-    if (session.signal.aborted) return
-    if (error instanceof AlbumRequestError) {
-      formError.value = error.status === 400 ? '请检查活动名称和目标选片数后重试。' : error.message
-    } else {
-      formError.value = '未收到创建结果，请先刷新活动列表，确认后再重试。'
-    }
-  } finally {
-    saving.value = false
-  }
-}
+const {
+  events, name, count, loading, saving, listError, formError, confirmation,
+  recovery, refresh, submit, finishCheck,
+} = useMemberEvents(props.token, session.signal)
 
 onMounted(refresh)
 onBeforeUnmount(() => session.abort())
@@ -72,7 +19,7 @@ onBeforeUnmount(() => session.abort())
       <header class="list-heading">
         <h2 id="member-events-heading">已加入的活动</h2>
         <button class="button" type="button" :disabled="loading || saving" @click="refresh">
-          {{ listError ? '重试活动列表' : '刷新列表' }}
+          {{ recovery === 'needs-list' ? '核对活动列表' : listError ? '重试活动列表' : '刷新列表' }}
         </button>
       </header>
       <p v-if="loading" role="status">正在加载活动…</p>
@@ -90,12 +37,18 @@ onBeforeUnmount(() => session.abort())
     <form class="health-panel event-form" aria-labelledby="create-event-heading" @submit.prevent="submit">
       <h2 id="create-event-heading">创建活动</h2>
       <label for="event-name">活动名称</label>
-      <input id="event-name" v-model="name" required maxlength="80" :disabled="saving" />
+      <input id="event-name" v-model="name" required maxlength="80" :disabled="saving || recovery !== 'none'" />
       <label for="event-count">目标选片数（选填）</label>
-      <input id="event-count" v-model="count" type="number" min="1" max="100" step="1" placeholder="1–100" :disabled="saving" />
+      <input id="event-count" v-model="count" type="number" min="1" max="100" step="1" placeholder="1–100" :disabled="saving || recovery !== 'none'" />
+      <p v-if="recovery === 'needs-list'" class="error-message" role="alert">创建结果待核对。请点击「核对活动列表」查看活动是否已创建。</p>
+      <div v-if="recovery === 'needs-choice'" class="recovery-actions">
+        <p role="status">列表已刷新，请核对本次活动。</p>
+        <button class="button" type="button" @click="finishCheck(true)">已找到该活动</button>
+        <button class="button" type="button" @click="finishCheck(false)">未找到，返回表单</button>
+      </div>
       <p v-if="formError" class="error-message" role="alert">{{ formError }}</p>
       <p v-if="confirmation" class="success" role="status">{{ confirmation }}</p>
-      <button class="button primary" type="submit" :disabled="saving || loading || !!listError">
+      <button class="button primary" type="submit" :disabled="saving || loading || !!listError || recovery !== 'none'">
         {{ saving ? '正在创建…' : '创建活动' }}
       </button>
     </form>
@@ -107,6 +60,8 @@ onBeforeUnmount(() => session.abort())
 .events-grid > * { min-width: 0; }
 .list-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 16px; }
 .list-heading button { padding: 10px 14px; }
+.recovery-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.recovery-actions p { width: 100%; }
 .event-list { list-style: none; margin: 0; padding: 0; }
 .event-list li { border-top: 1px solid var(--line); }
 .event-list a { display: grid; gap: 4px; padding: 12px 0; overflow-wrap: anywhere; }

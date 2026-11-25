@@ -40,8 +40,16 @@ export function photoPath(eventId: string, photoId: string) {
   return `${eventPath(eventId)}/photos/${encodeURIComponent(photoId)}`
 }
 
+function isAlbumEvent(value: unknown): value is AlbumEvent {
+  return typeof value === 'object' && value !== null
+    && 'id' in value && typeof value.id === 'string' && value.id.length > 0
+    && 'name' in value && typeof value.name === 'string'
+}
+
 export async function listEvents(token: string, signal: AbortSignal): Promise<AlbumEvent[]> {
-  return (await albumRequest('/api/events', token, { signal })).json()
+  const events: unknown = await (await albumRequest('/api/events', token, { signal })).json()
+  if (!Array.isArray(events) || !events.every(isAlbumEvent)) throw new Error('活动列表响应无效')
+  return events
 }
 
 export async function createEvent(
@@ -55,7 +63,9 @@ export async function createEvent(
     body: JSON.stringify({ name: input.name, desiredPhotoCount: input.desiredPhotoCount }),
     signal,
   })
-  return response.json()
+  const event: unknown = await response.json()
+  if (!isAlbumEvent(event)) throw new Error('创建响应缺少活动信息')
+  return event
 }
 
 export async function listPhotos(eventId: string, token: string, signal: AbortSignal): Promise<AlbumPhoto[]> {
