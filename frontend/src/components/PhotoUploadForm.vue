@@ -1,96 +1,67 @@
 <script setup lang="ts">
-import { onBeforeUnmount, shallowRef, ref, watch } from 'vue'
-import { AlbumRequestError, photoUploadError, uploadPhoto } from '../api/album'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { uploadPhoto } from '../api/album'
+import { usePhotoUpload } from './usePhotoUpload'
 
-const props = defineProps<{ eventId: string; token: string }>()
-const emit = defineEmits<{ uploaded: []; refresh: [] }>()
-const maxBytes = 8 * 1024 * 1024
+const props = defineProps<{ eventId: string; token: string; refreshPhotos: () => Promise<boolean> }>()
+const emit = defineEmits<{ uploaded: [] }>()
 const input = ref<HTMLInputElement>()
-const selected = shallowRef<File>()
-const busy = ref(false)
-const error = ref('')
-const uploaded = ref(false)
-const resultUnknown = ref(false)
-let request: AbortController | undefined
+const { state, error, canSelect, canSubmit, chooseFile, submit, checkPhotos, finishCheck, reset } = usePhotoUpload(
+  (file, signal) => uploadPhoto(props.eventId, file, props.token, signal),
+  () => props.refreshPhotos(),
+)
 
-function chooseFile(event: Event) {
-  selected.value = (event.target as HTMLInputElement).files?.[0]
-  error.value = ''
-  uploaded.value = false
-  resultUnknown.value = false
-}
-
-function clearSelection() {
-  selected.value = undefined
+function clearInput() {
   if (input.value) input.value.value = ''
 }
 
-function reset() {
-  request?.abort()
-  busy.value = false
-  error.value = ''
-  uploaded.value = false
-  resultUnknown.value = false
-  clearSelection()
+watch(() => [props.eventId, props.token], () => {
+  reset()
+  clearInput()
+}, { flush: 'sync' })
+onBeforeUnmount(reset)
+
+async function submitForm() {
+  if (!await submit()) return
+  clearInput()
+  emit('uploaded')
 }
 
-watch(() => [props.eventId, props.token], reset, { flush: 'sync' })
-onBeforeUnmount(() => request?.abort())
-
-async function submit() {
-  const file = selected.value
-  if (!file || busy.value) return
-  error.value = ''
-  resultUnknown.value = false
-  uploaded.value = false
-  if (file.size === 0) {
-    error.value = '所选文件为空，请重新选择。'
-    return
-  }
-  if (file.size > maxBytes) {
-    error.value = '单张照片最多 8 MiB，请缩小后再上传。'
-    return
-  }
-
-  const controller = new AbortController()
-  request = controller
-  busy.value = true
-  try {
-    await uploadPhoto(props.eventId, file, props.token, controller.signal)
-    if (controller.signal.aborted) return
-    clearSelection()
-    uploaded.value = true
-    emit('uploaded')
-  } catch (cause) {
-    if (controller.signal.aborted) return
-    error.value = photoUploadError(cause)
-    resultUnknown.value = !(cause instanceof AlbumRequestError)
-  } finally {
-    if (request === controller) {
-      request = undefined
-      busy.value = false
-    }
+async function resolveCheck(chooseAgain: boolean) {
+  if (!finishCheck()) return
+  clearInput()
+  if (chooseAgain) {
+    await nextTick()
+    input.value?.focus()
   }
 }
 </script>
 
 <template>
-  <form class="photo-upload" @submit.prevent="submit">
+  <form class="photo-upload" @submit.prevent="submitForm">
     <label for="album-upload">选择照片</label>
     <p id="album-upload-hint" class="muted">JPEG 或 PNG，单张最多 8 MiB。</p>
     <div class="upload-actions">
       <input id="album-upload" ref="input" type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png"
-        aria-describedby="album-upload-hint" :disabled="busy" @change="chooseFile" />
-      <button class="button primary" type="submit" :disabled="busy || !selected">
-        {{ busy ? '正在上传…' : '上传照片' }}
+        aria-describedby="album-upload-hint" :disabled="!canSelect"
+        @change="chooseFile(($event.target as HTMLInputElement).files?.[0])" />
+      <button class="button primary" type="submit" :disabled="!canSubmit">
+        {{ state === 'uploading' ? '正在上传…' : '上传照片' }}
       </button>
     </div>
-    <p v-if="busy" role="status">正在上传所选照片。</p>
-    <p v-else-if="uploaded" role="status">照片已上传。</p>
+    <p v-if="state === 'uploading'" role="status">正在上传所选照片。</p>
+    <p v-else-if="state === 'uploaded'" role="status">照片已上传。</p>
+    <p v-else-if="state === 'checking'" role="status">正在刷新照片列表…</p>
+    <p v-else-if="state === 'checked'" role="status">列表已刷新。请核对这张照片是否已经入册。</p>
     <p v-else-if="error" class="error-message" role="alert">{{ error }}</p>
-    <button v-if="resultUnknown" class="button upload-refresh" type="button" @click="emit('refresh')">
+    <button v-if="state === 'needs-check'" class="button upload-refresh" type="button" @click="checkPhotos">
       刷新照片列表
     </button>
+    <div v-if="state === 'checked'" class="upload-actions">
+      <button class="button upload-refresh" type="button" @click="resolveCheck(false)">已找到照片，结束核对</button>
+      <button class="button upload-refresh" type="button" @click="resolveCheck(true)">未找到照片，重新选择</button>
+      <button class="button upload-refresh" type="button" @click="checkPhotos">再次刷新</button>
+    </div>
   </form>
 </template>
 

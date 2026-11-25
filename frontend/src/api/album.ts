@@ -51,8 +51,12 @@ export async function uploadPhoto(eventId: string, file: File, token: string, si
   await albumRequest(`${eventPath(eventId)}/photos`, token, { method: 'POST', body, signal })
 }
 
+export function photoUploadOutcomeUnknown(error: unknown) {
+  return !(error instanceof AlbumRequestError) || error.status === 502 || error.status === 504
+}
+
 export function photoUploadError(error: unknown) {
-  if (!(error instanceof AlbumRequestError)) {
+  if (!(error instanceof AlbumRequestError) || photoUploadOutcomeUnknown(error)) {
     return '无法确认上传结果。请先刷新照片列表，再决定是否重试。'
   }
   switch (error.status) {
