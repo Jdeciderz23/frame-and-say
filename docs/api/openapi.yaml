@@ -138,6 +138,7 @@ paths:
     get:
       operationId: listEventPhotos
       summary: 列出成员可访问的活动照片
+      description: 每张照片只列出当前最新版本。已存在的历史版本可通过其受保护的缩略图路径读取。
       x-implementation-status: implemented
       x-task-id: W2-05
       responses:
@@ -158,7 +159,11 @@ paths:
     post:
       operationId: uploadPhoto
       summary: 上传一张照片
-      description: JPEG 或 PNG。文件上限 8 MiB，请求体上限 9 MiB，单边至多 12000 像素，总像素至多 2400 万。
+      description: >-
+        JPEG 或 PNG，以服务端识别并实际解码的内容为准，不信任文件扩展名或上传声明的 Content-Type。
+        空文件返回 400，伪装文本、其他图片格式或无法解码的图片返回 415。
+        文件上限 8 MiB，请求体上限 9 MiB，单边至多 12000 像素，总像素至多 2400 万；超限返回 413。
+        原文件名不参与存储键生成；每次成功上传生成独立版本，响应仅提供受成员权限保护的缩略图路径。
       x-implementation-status: implemented
       x-task-id: W2-05
       requestBody:
@@ -188,7 +193,9 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '413':
-          description: 文件、请求体或图片尺寸超出限制，代理层错误正文可能与应用不同
+          description: >-
+            文件、图片尺寸或整个 multipart 请求体超出限制。请求体包含分隔符和表单字段。
+            Nginx 可在身份检查前拒绝超限请求，错误正文可能与应用不同。
         '409':
           description: 此活动已有 100 张照片
           content:
@@ -207,11 +214,15 @@ paths:
     get:
       operationId: getPhotoThumbnail
       summary: 成员读取指定版本的缩略图
+      description: >-
+        活动、照片和版本必须匹配。有效成员可读取指定版本，包括仍保留的历史版本。
+        缩略图使用 PNG，返回 Cache-Control no-store。
+        请求仅接收资源标识，响应不提供原图 URL 或磁盘路径。
       x-implementation-status: implemented
       x-task-id: W2-05
       responses:
         '200':
-          description: 私有缩略图
+          description: 私有缩略图，最长边不大于 320 像素且原图较小时不放大
           content:
             image/png:
               schema:
@@ -361,6 +372,9 @@ paths:
     get:
       operationId: getMyPublicationConsent
       summary: 查询当前名单修订下的本人授权状态
+      description: >-
+        仅返回当前操作者本人的状态；canDecide=false 时不得提交。
+        若版本已过期返回 409，先重新读取活动照片列表取得当前版本，再读取本人状态。
       parameters:
         - $ref: '#/components/parameters/PhotoVersionQuery'
         - name: purpose
@@ -390,7 +404,10 @@ paths:
     put:
       operationId: setMyPublicationConsent
       summary: 对指定版本、出镜名单修订和用途提交本人决定
-      description: 只有已确认名单中的本人可提交。修订发生变化时需重新读取上下文。
+      description: >-
+        只有已确认名单中的本人可提交。名单或照片版本过期返回 409。
+        调用方应清除待提交选择，重新读取照片列表和本人状态，由本人查看当前版本后再次确认；不得自动重放旧同意。
+        普通出镜者刷新本人状态不需要、也无权读取发起人专用的出镜名单接口。
       x-implementation-status: implemented
       x-task-id: W2-03
       requestBody:
@@ -469,7 +486,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: 联调令牌由服务端分别配置。只在开发环境使用。
+      description: 联调令牌由服务端分别配置；仅在 demo/local/test 且 app.bootstrap.enabled=true 时可用，其他环境不接受演示身份。
   parameters:
     EventId:
       name: eventId
@@ -534,6 +551,8 @@ components:
           enum: [ORGANIZER, PARTICIPANT]
     PhotoMetadata:
       type: object
+      additionalProperties: false
+      description: 不包含原文件名、磁盘路径或原图下载地址；photoVersionId 是版本标识，不是访问凭据。
       required: [photoId, photoVersionId, eventId, thumbnailAvailable, thumbnailUrl, subjectRevision, rosterConfirmed]
       properties:
         photoId:
@@ -549,7 +568,7 @@ components:
           type: boolean
         thumbnailUrl:
           type: string
-          description: 同源 API 路径，读取时携带当前成员令牌
+          description: 同源受保护 API 路径，读取时携带当前活动成员令牌；返回最长边不超过 320 像素且不放大的 PNG，Cache-Control 为 no-store
         subjectRevision:
           $ref: '#/components/schemas/SubjectRevision'
         rosterConfirmed:

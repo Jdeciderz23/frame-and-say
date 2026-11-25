@@ -5,6 +5,7 @@ import { albumError, listEvents, listPhotos, type AlbumEvent, type AlbumPhoto } 
 import PhotoThumbnail from '../components/PhotoThumbnail.vue'
 import PhotoPreference from '../components/PhotoPreference.vue'
 import PhotoConsent from '../components/PhotoConsent.vue'
+import PhotoUploadForm from '../components/PhotoUploadForm.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,7 +19,7 @@ const photosLoading = ref(false)
 const eventsError = ref('')
 const photosError = ref('')
 const eventsRetry = ref(0)
-const photosRetry = ref(0)
+let photosRequest: AbortController | undefined
 const eventId = computed(() => typeof route.query.event === 'string' ? route.query.event : '')
 const event = computed(() => events.value.find(item => item.id === eventId.value))
 const activePhoto = computed(() => photos.value.find(item => item.photoVersionId === route.query.photo))
@@ -72,22 +73,36 @@ watch([token, eventsRetry], async ([currentToken], _, cleanup) => {
   }
 }, { immediate: true })
 
-watch([token, event, photosRetry], async ([currentToken, currentEvent], _, cleanup) => {
-  const controller = new AbortController()
-  cleanup(() => controller.abort())
-  photos.value = []
+async function refreshPhotos() {
+  photosRequest?.abort()
+  const currentToken = token.value
+  const currentEvent = event.value
   photosError.value = ''
   photosLoading.value = Boolean(currentToken && currentEvent)
-  if (!currentToken || !currentEvent) return
+  if (!currentToken || !currentEvent) return false
+  const controller = new AbortController()
+  photosRequest = controller
 
   try {
     const result = await listPhotos(currentEvent.id, currentToken, controller.signal)
-    if (!controller.signal.aborted) photos.value = result
+    if (controller.signal.aborted) return false
+    photos.value = result
+    return true
   } catch (error) {
     if (!controller.signal.aborted) photosError.value = albumError(error)
+    return false
   } finally {
-    if (!controller.signal.aborted) photosLoading.value = false
+    if (photosRequest === controller) {
+      photosRequest = undefined
+      photosLoading.value = false
+    }
   }
+}
+
+watch([token, event], (_, __, cleanup) => {
+  cleanup(() => photosRequest?.abort())
+  photos.value = []
+  void refreshPhotos()
 }, { immediate: true })
 </script>
 
@@ -125,10 +140,12 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
 
     <section v-if="event" aria-labelledby="album-heading">
       <h2 id="album-heading" ref="albumHeading" tabindex="-1">{{ event.name }}</h2>
+      <PhotoUploadForm v-show="!activePhoto" :key="event.id" :event-id="event.id" :token="token"
+        :refresh-photos="refreshPhotos" @uploaded="refreshPhotos" />
       <p v-if="photosLoading" role="status">正在加载照片…</p>
       <div v-else-if="photosError">
         <p class="error-message" role="alert">{{ photosError }}</p>
-        <button class="button secondary" type="button" @click="photosRetry++">重试照片列表</button>
+        <button class="button secondary" type="button" @click="refreshPhotos">重试照片列表</button>
       </div>
       <p v-else-if="!photos.length">这个活动还没有照片。</p>
       <template v-else>
@@ -137,8 +154,8 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
           <button type="button" class="button secondary" @click="openPhoto()">返回照片列表</button>
           <h3 id="photo-heading" ref="photoHeading" tabindex="-1">照片 {{ activePhotoNumber }}</h3>
           <PhotoThumbnail :event-id="event.id" :photo="activePhoto" :token="token" :alt="`照片 ${activePhotoNumber} 缩略图`" />
-          <PhotoPreference :event-id="event.id" :photo="activePhoto" :token="token" />
-          <PhotoConsent :event-id="event.id" :photo="activePhoto" :token="token" @refresh="photosRetry++" />
+          <PhotoPreference :event-id="event.id" :photo="activePhoto" :token="token" @refresh="refreshPhotos" />
+          <PhotoConsent :event-id="event.id" :photo="activePhoto" :token="token" @refresh="refreshPhotos" />
         </section>
         <ul v-else class="photo-grid">
           <li v-for="(photo, index) in photos" :key="photo.photoVersionId">
