@@ -1,6 +1,6 @@
 # 照有商量协作指南
 
-五位成员从 GitHub Issue 领取工作，用短期分支提交 PR 到 `main`。Issue 的 Assignee 负责跟进验收，其他成员可以通过关联 PR 交付其中一部分。模块负责人见[五人分工](docs/04-team-responsibilities.md)，任务进度见 [GitHub Issues](https://github.com/Jdeciderz23/frame-and-say/issues)。
+贡献者从 GitHub Issue 领取工作，用短期分支提交 PR 到 `main`。Issue 的 Assignee 负责跟进验收，其他成员可以通过关联 PR 交付其中一部分。模块负责人见[模块维护者](docs/04-team-responsibilities.md)，任务进度见 [GitHub Issues](https://github.com/Jdeciderz23/frame-and-say/issues)。
 
 ## 开分支和推送
 
@@ -37,7 +37,14 @@ git push -u origin HEAD
 
 - 公开仓库的 `main` 必须通过 PR 合入，禁止强推和删除，保护规则也适用于管理员。合并时分支须包含最新的 `main`，并通过 GitHub Actions 的 `frontend`、`backend`、`mysql-compose` 三项必需检查。
 - [生效的 CODEOWNERS](https://github.com/Jdeciderz23/frame-and-say/blob/main/.github/CODEOWNERS) 由 `@Jdeciderz23` 覆盖整个仓库。组员的 PR 由其核对差异和验收证据后点 **Approve**；需修改时用 **Request changes**。影响评审的新提交会使旧批准失效。
-- `@Jdeciderz23` 自己发起的 PR 由本人记录自查与验证结果，待三项 CI 通过后使用仅限 PR 的管理员例外。课程要求的评审记录按教师要求留存。
+- `@Jdeciderz23` 自己发起的 PR 由本人记录自查与验证结果，待三项 CI 通过后使用仅限 PR 的管理员例外。
 - 合并前逐项处理评审意见。GitHub 当前未强制解决每条对话，组内由合并人核对处理结果。条件满足后，有写权限的成员可以用 **Squash and merge**。确认改动已进入 `main` 且分支没有后续工作后，手动删除任务分支。
 
 `Collaboration` 工作流运行时会检查分支名、PR 标题和 Issue 引用。`pr-policy` 当前只提供校验结果。GitHub 的 [Ruleset](https://github.com/Jdeciderz23/frame-and-say/rules/27667734) 负责 Code Owner 审核和管理员 PR 例外。[经典保护配置样例](.github/branch-protection.json)对应 **Settings → Branches** 中所有人都要满足的 PR 与 CI 要求。
+
+## 需求变更与版本基线
+
+1. 使用「需求变更」Issue 表单。写明原 US、UC 或 NFR 编号、触发证据、拟改变的行为，以及受影响的验收场景和里程碑。
+2. 模块维护者和接口使用方在 Issue 中核对权限、数据与测试影响，记录采纳、延期或退回的依据。按原编号保留变更前后的对应关系。
+3. 通过关联 PR 一并更新[需求规格](docs/11-srs-draft.md)、[追溯矩阵](docs/13-traceability.md)及受影响的用例图、接口或测试。正文注明验证结果，按上面的评审与合并规则办理。
+4. 发布正式需求基线时，为已通过评审的提交打版本标签，Release 说明列出变更的需求 ID、Issue 和验证依据。
