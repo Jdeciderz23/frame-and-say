@@ -12,6 +12,8 @@ export function useMemberEvents(token: string, signal: AbortSignal) {
   const confirmation = ref('')
   const recovery = ref<'none' | 'needs-list' | 'needs-choice'>('none')
 
+  let attempt: { id: string; name: string; target?: number } | undefined
+
   async function refresh() {
     if (loading.value) return
     if (recovery.value !== 'none') recovery.value = 'needs-list'
@@ -47,7 +49,12 @@ export function useMemberEvents(token: string, signal: AbortSignal) {
     }
     saving.value = true
     try {
-      const created = await createEvent({ name: name.value, desiredPhotoCount: target }, token, signal)
+      const displayName = name.value.trim()
+      if (!attempt || attempt.name !== displayName || attempt.target !== target) {
+        attempt = { id: crypto.randomUUID(), name: displayName, target }
+      }
+      const created = await createEvent({ name: name.value, desiredPhotoCount: target }, token, signal, attempt.id)
+      attempt = undefined
       if (signal.aborted) return
       confirmation.value = '已创建「' + created.name + '」。'
       name.value = ''
@@ -69,6 +76,7 @@ export function useMemberEvents(token: string, signal: AbortSignal) {
     if (recovery.value !== 'needs-choice') return
     recovery.value = 'none'
     if (found) {
+      attempt = undefined
       name.value = ''
       count.value = ''
       confirmation.value = '已确认活动在列表中。'

@@ -47,7 +47,7 @@ it.each([502, 504])('reconciles a committed POST followed by HTTP %i using GET o
 
 it('retains the draft and waits for an explicit retry after the member checks an empty list', async () => {
   const fetchMock = vi.fn()
-    .mockRejectedValueOnce(new TypeError('connection lost'))
+    .mockResolvedValueOnce(new Response(null, { status: 504 }))
     .mockResolvedValueOnce(Response.json([]))
     .mockResolvedValueOnce(Response.json({ id: '1', name: '秋游', desiredPhotoCount: 4 }, { status: 201 }))
     .mockResolvedValueOnce(Response.json([{ id: '1', name: '秋游', desiredPhotoCount: 4 }]))
@@ -61,6 +61,10 @@ it('retains the draft and waits for an explicit retry after the member checks an
   expect(form.count.value).toBe(4)
   expect(fetchMock).toHaveBeenCalledTimes(2)
   await form.submit()
+  const keys = fetchMock.mock.calls.filter(([, options]) => options.method === 'POST')
+    .map(([, options]) => new Headers(options.headers).get('Idempotency-Key'))
+  expect(keys[0]).toBeTruthy()
+  expect(keys[1]).toBe(keys[0])
   expect(form.events.value).toHaveLength(1)
   expect(fetchMock.mock.calls.map(([, options]) => options.method ?? 'GET')).toEqual(['POST', 'GET', 'POST', 'GET'])
 })
