@@ -2,6 +2,7 @@
 import { computed, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { albumError, listEvents, listPhotos, type AlbumEvent, type AlbumPhoto } from '../api/album'
+import type { Purpose } from '../api/consent'
 import PhotoThumbnail from '../components/PhotoThumbnail.vue'
 import PhotoPreference from '../components/PhotoPreference.vue'
 import PhotoConsent from '../components/PhotoConsent.vue'
@@ -20,6 +21,7 @@ const photosLoading = ref(false)
 const eventsError = ref('')
 const photosError = ref('')
 const eventsRetry = ref(0)
+const progressPurpose = ref<Purpose>('INTERNAL_SHARE')
 let photosRequest: AbortController | undefined
 const eventId = computed(() => typeof route.query.event === 'string' ? route.query.event : '')
 const event = computed(() => events.value.find(item => item.id === eventId.value))
@@ -103,6 +105,7 @@ async function refreshPhotos() {
 watch([token, event], (_, __, cleanup) => {
   cleanup(() => photosRequest?.abort())
   photos.value = []
+  progressPurpose.value = 'INTERNAL_SHARE'
   void refreshPhotos()
 }, { immediate: true })
 </script>
@@ -148,7 +151,6 @@ watch([token, event], (_, __, cleanup) => {
         <p class="error-message" role="alert">{{ photosError }}</p>
         <button class="button secondary" type="button" @click="refreshPhotos">重试照片列表</button>
       </div>
-      <p v-else-if="!photos.length">这个活动还没有照片。</p>
       <template v-else>
         <p v-if="route.query.photo && !activePhoto" role="status">原照片版本已不可用，请从列表重新打开。</p>
         <section v-if="activePhoto" :key="activePhoto.photoVersionId" class="photo-detail" aria-labelledby="photo-heading">
@@ -159,8 +161,10 @@ watch([token, event], (_, __, cleanup) => {
           <PhotoConsent :event-id="event.id" :photo="activePhoto" :token="token" @refresh="refreshPhotos" />
         </section>
         <template v-else>
-          <EventShareProgress :key="event.id" :event-id="event.id" :photos="photos" :token="token" />
-          <ul class="photo-grid">
+          <EventShareProgress v-model:purpose="progressPurpose" :key="event.id"
+            :event-id="event.id" :photos="photos" :token="token" @refresh="refreshPhotos" />
+          <p v-if="!photos.length">这个活动还没有照片。</p>
+          <ul v-else class="photo-grid">
             <li v-for="(photo, index) in photos" :key="photo.photoVersionId">
               <PhotoThumbnail :event-id="event.id" :photo="photo" :token="token" :alt="`照片 ${index + 1} 缩略图`" />
               <button class="button secondary" type="button" @click="openPhoto(photo)">打开照片 {{ index + 1 }}</button>
