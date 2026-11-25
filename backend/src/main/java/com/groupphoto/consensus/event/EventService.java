@@ -23,30 +23,34 @@ class EventService {
 
     @Transactional
     public Event create(String actorId, String name, Integer desiredPhotoCount, UUID requestId) {
-        String eventId = UUID.randomUUID().toString();
+        String newId = UUID.randomUUID().toString();
         String displayName = name.strip();
-        if (requestId != null) {
-            // The unique actor/key row serializes competing transactions, including an uncommitted first POST.
-            jdbc.update("""
-                    INSERT INTO event_creation_requests (actor_id, request_key, event_id, name, desired_photo_count)
-                    VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE request_key = request_key
-                    """, actorId, requestId.toString(), eventId, displayName, desiredPhotoCount);
-            Event first = jdbc.queryForObject("""
-                    SELECT event_id, name, desired_photo_count FROM event_creation_requests
-                    WHERE actor_id = ? AND request_key = ? FOR UPDATE
-                    """, (row, index) -> new Event(row.getString(1), row.getString(2), row.getObject(3, Integer.class)),
-                    actorId, requestId.toString());
-            if (!displayName.equals(first.name()) || !Objects.equals(desiredPhotoCount, first.desiredPhotoCount())) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Creation key already used for different input");
-            }
-            if (!eventId.equals(first.id())) {
-                return first;
-            }
+        String eventId = requestId == null ? newId
+                : claimCreation(actorId, requestId, newId, displayName, desiredPhotoCount);
+        if (eventId.equals(newId)) {
+            jdbc.update("INSERT INTO events (id, name, desired_photo_count) VALUES (?, ?, ?)",
+                    eventId, displayName, desiredPhotoCount);
+            members.addOrganizer(eventId, actorId);
         }
-        jdbc.update("INSERT INTO events (id, name, desired_photo_count) VALUES (?, ?, ?)",
-                eventId, displayName, desiredPhotoCount);
-        members.addOrganizer(eventId, actorId);
         return new Event(eventId, displayName, desiredPhotoCount);
+    }
+
+    private String claimCreation(String actorId, UUID requestId, String newId, String name, Integer target) {
+        // The unique actor/key row serializes retries, even while the first creation is uncommitted.
+        jdbc.update("""
+                INSERT INTO event_creation_requests (actor_id, request_key, event_id, name, desired_photo_count)
+                VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE request_key = request_key
+                """, actorId, requestId.toString(), newId, name, target);
+        return jdbc.queryForObject("""
+                SELECT event_id, name, desired_photo_count FROM event_creation_requests
+                WHERE actor_id = ? AND request_key = ? FOR UPDATE
+                """, (row, index) -> {
+                    if (!name.equals(row.getString("name"))
+                            || !Objects.equals(target, row.getObject("desired_photo_count", Integer.class))) {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT, "Creation key already used for different input");
+                    }
+                    return row.getString("event_id");
+                }, actorId, requestId.toString());
     }
 
     public List<Event> list(String actorId) {
