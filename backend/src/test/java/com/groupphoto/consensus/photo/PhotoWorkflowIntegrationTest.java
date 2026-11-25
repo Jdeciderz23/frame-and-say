@@ -69,6 +69,46 @@ class PhotoWorkflowIntegrationTest {
     @Autowired
     private ConsentService consents;
 
+    @Test
+    void participantCreatesOnlyOneInitialVersionAndProtectedThumbnail() throws Exception {
+        String eventId = createEvent("Participant upload", true);
+        var accepted = mvc.perform(multipart(photosAt(eventId)).file(image("png"))
+                        .header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.subjectRevision").value(0))
+                .andExpect(jsonPath("$.rosterConfirmed").value(false))
+                .andReturn().getResponse().getContentAsString();
+        var uploaded = json.readTree(accepted);
+        String photoId = uploaded.required("photoId").asText();
+        String versionId = uploaded.required("photoVersionId").asText();
+        String thumbnail = uploaded.required("thumbnailUrl").asText();
+        var fake = new MockMultipartFile("file", "pretender.png", "image/png", "synthetic text".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        mvc.perform(multipart(photosAt(eventId)).file(fake).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isUnsupportedMediaType());
+
+        mvc.perform(get(photosAt(eventId)).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].photoId").value(photoId))
+                .andExpect(jsonPath("$[0].photoVersionId").value(versionId));
+        assertThat(jdbc.queryForList("SELECT id FROM photos WHERE event_id = ?", String.class, eventId))
+                .containsExactly(photoId);
+        assertThat(jdbc.queryForList("SELECT id FROM photo_versions WHERE event_id = ?", String.class, eventId))
+                .containsExactly(versionId);
+        assertThat(jdbc.queryForObject("SELECT version_number FROM photo_versions WHERE id = ?", Integer.class, versionId))
+                .isOne();
+        assertThat(Files.isRegularFile(storage.resolve(versionId).resolve("original"))).isTrue();
+        mvc.perform(get(thumbnail)).andExpect(status().isUnauthorized());
+        var thumbnailBytes = mvc.perform(get(thumbnail).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_PNG))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
+                .andReturn().getResponse().getContentAsByteArray();
+        var decoded = SyntheticImages.decode(thumbnailBytes);
+        assertThat(decoded.getWidth()).isEqualTo(320);
+        assertThat(decoded.getHeight()).isEqualTo(160);
+    }
+
     @ParameterizedTest
     @CsvSource({"jpeg, ../../same.png", "png, ../../same.jpg",
             "jpeg, C:\\uploads\\same.png", "png, C:\\uploads\\same.jpg"})
