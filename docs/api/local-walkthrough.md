@@ -22,7 +22,7 @@ rm "$SMOKE_STATE"
 
 本机 H2 重启后会清空。用 H2 联调只运行 `create`，完成后可直接删除临时状态文件。联调使用合成数据，建议为联调指定 `APP_PHOTO_DIR` 专用目录。
 
-前端读取缩略图时，用 `fetch` 带上活动成员令牌，再用返回的 Blob 创建对象 URL，离开页面时回收。联调接口保留未评分的 `null`，区别于中性偏好 `0`。改动授权时先读取当前 `subjectRevision`，收到 `409` 后刷新界面并让用户重新确认。联调令牌只用于本机。正式登录、推荐调用和导出仍由对应成员开发。
+前端读取缩略图时，用 `fetch` 带上活动成员令牌，再用返回的 Blob 创建对象 URL，离开页面时回收。联调接口保留未评分的 `null`，区别于中性偏好 `0`。改动授权时先读取当前 `subjectRevision`，收到 `409` 后刷新界面并让用户重新确认。联调令牌只用于本机。正式登录和推荐调用仍由对应成员开发。
 
 从首页选择「打开联调相册」，进入 `/album`。先连接当前活动成员的本机令牌，再选择脚本创建的活动。令牌保存在当前标签页的会话存储，选择「断开联调身份」可清除。复制相册地址时只包含活动和照片版本标识。用没有加入活动的令牌打开该地址时，页面提示无法访问。
 
@@ -48,6 +48,19 @@ rm "$SMOKE_STATE"
 `app.bootstrap.enabled` 在基础配置中默认关闭，仅 demo、local、test 配置启用。关闭时，配置了两个演示令牌也不能认证；在其他环境或混合生产环境中强制启用会阻止启动。使用额外的本机 profile 时，需要显式选择允许的环境，不能将演示身份开关带入正式部署。
 
 正式登录与邀请的迁移步骤见[身份与邀请方案（待评审）](identity-invitations-proposal.md)。当前 `addEventMember` 只添加已配置的合成成员，不代表已经实现邀请。
+
+## 导出经过复核的照片
+
+发起人核对所需照片后，向 `POST /api/events/{eventId}/confirmed-selections` 提交用途和有序条目。每条包含 `photoId`、`photoVersionId`、`subjectRevision`。保存成功后，用同一身份调用 `GET /api/events/{eventId}/confirmed-selections/{selectionId}/export` 下载 ZIP。实际文件按版本 ID 命名，每个条目都是原图。导出直接读取服务端清单，已有授权只适用于对应的用途。
+
+在专用合成活动环境中可运行以下冒烟检查。它创建两张已许可照片和一张清单外的照片，解压比较首次 ZIP 的原图，再撤回第二张照片的群内许可并确认重新下载返回 `409`。
+
+```sh
+EXPORT_STATE=$(mktemp "${TMPDIR:-/tmp}/frame-and-say-export.XXXXXX")
+node --env-file=.env scripts/smoke-reviewed-export.mjs create "$EXPORT_STATE"
+```
+
+示例 ZIP 位于 `"$EXPORT_STATE.zip"`。使用持久化数据库时，可在重启后执行 `node --env-file=.env scripts/smoke-reviewed-export.mjs verify "$EXPORT_STATE"`，验证同一清单仍拒绝交付。完成后删除状态文件和样例 ZIP。
 
 ## 图片存储与输入边界回归
 

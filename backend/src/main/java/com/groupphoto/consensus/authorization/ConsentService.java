@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -63,18 +64,32 @@ public class ConsentService {
     }
 
     // This input is evaluated against the latest revision for the requested purpose.
-    // A later delivery step must check again before handing out a file.
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Eligibility evaluateForRecommendation(String eventId, String photoId, String versionId,
                                                  String actorId, Purpose purpose) {
         membership.requireOrganizer(eventId, actorId);
         var version = photos.lockCurrentVersion(eventId, photoId, versionId);
+        return evaluate(version, purpose);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public PhotoCatalog.Version requireEligibleForDelivery(String eventId, String photoId, String versionId,
+                                                           String actorId, Purpose purpose, long reviewedRevision) {
+        membership.requireOrganizer(eventId, actorId);
+        var version = photos.lockCurrentVersion(eventId, photoId, versionId);
+        if (version.subjectRevision() != reviewedRevision || !evaluate(version, purpose).eligible()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The confirmed selection changed; review it again");
+        }
+        return version;
+    }
+
+    private Eligibility evaluate(PhotoCatalog.Version version, Purpose purpose) {
         var required = jdbc.sql("""
                 SELECT c.decision FROM photo_subjects s
                 LEFT JOIN photo_consents c ON c.photo_version_id = s.photo_version_id
                     AND c.subject_revision = s.subject_revision AND c.user_id = s.user_id AND c.purpose = :purpose
                 WHERE s.photo_version_id = :versionId AND s.subject_revision = :revision
-                """).param("purpose", purpose.name()).param("versionId", versionId)
+                """).param("purpose", purpose.name()).param("versionId", version.photoVersionId())
                 .param("revision", version.subjectRevision())
                 .query((result, row) -> {
                     String decision = result.getString("decision");

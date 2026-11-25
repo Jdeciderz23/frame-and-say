@@ -12,12 +12,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class PhotoCatalog {
     private static final String VERSION_COLUMNS = """
             SELECT photo_id, id AS photo_version_id, event_id, version_number,
-                   subject_revision, roster_confirmed
+                   subject_revision, roster_confirmed, media_type
             FROM photo_versions
             """;
 
     public record Version(String photoId, String photoVersionId, String eventId, int versionNumber,
-                          long subjectRevision, boolean rosterConfirmed) {}
+                          long subjectRevision, boolean rosterConfirmed, String mediaType) {}
 
     private final JdbcClient jdbc;
 
@@ -66,7 +66,7 @@ public class PhotoCatalog {
     List<Version> currentVersions(String eventId) {
         return jdbc.sql("""
                 SELECT v.photo_id, v.id AS photo_version_id, v.event_id, v.version_number,
-                       v.subject_revision, v.roster_confirmed
+                       v.subject_revision, v.roster_confirmed, v.media_type
                 FROM photo_versions v
                 WHERE v.event_id = :eventId AND NOT EXISTS (
                     SELECT 1 FROM photo_versions newer
