@@ -45,6 +45,26 @@ export async function listPhotos(eventId: string, token: string, signal: AbortSi
   return (await albumRequest(`${eventPath(eventId)}/photos`, token, { signal })).json()
 }
 
+export async function uploadPhoto(eventId: string, file: File, token: string, signal: AbortSignal) {
+  const body = new FormData()
+  body.set('file', file)
+  await albumRequest(`${eventPath(eventId)}/photos`, token, { method: 'POST', body, signal })
+}
+
+export function photoUploadError(error: unknown) {
+  if (!(error instanceof AlbumRequestError)) {
+    return '无法确认上传结果。请先刷新照片列表，再决定是否重试。'
+  }
+  switch (error.status) {
+    case 400: return '无法读取所选文件，请重新选择。'
+    case 409: return '此活动已达到 100 张照片的上限。'
+    case 413: return '照片超出文件大小或像素限制，请缩小后再上传。'
+    case 415: return '所选文件不是可解码的 JPEG 或 PNG。'
+    case 503: return '图片存储暂不可用，请稍后重试。'
+    default: return error.message
+  }
+}
+
 export async function readThumbnail(eventId: string, photo: AlbumPhoto, token: string, signal: AbortSignal) {
   const path = `${photoPath(eventId, photo.photoId)}/versions/${encodeURIComponent(photo.photoVersionId)}/thumbnail`
   const response = await albumRequest(path, token, { signal })
