@@ -1,4 +1,4 @@
-import { albumRequest, photoPath, type AlbumPhoto } from './album'
+import { albumRequest, eventPath, photoPath, type AlbumPhoto } from './album'
 
 export const purposes = [
   { value: 'INTERNAL_SHARE', label: '活动群内分享' },
@@ -15,6 +15,18 @@ export interface MyConsent {
   purpose: Purpose
   decision: ConsentStatus
   canDecide: boolean
+}
+
+export interface PhotoProgress {
+  photoId: string
+  photoVersionId: string
+  eligible: boolean
+}
+
+export async function readShareProgress(eventId: string, token: string, purpose: Purpose, signal: AbortSignal): Promise<PhotoProgress[]> {
+  const query = new URLSearchParams({ purpose })
+  const response = await albumRequest(`${eventPath(eventId)}/consent-progress?${query}`, token, { signal })
+  return response.json()
 }
 
 function consentPath(eventId: string, photo: AlbumPhoto) {

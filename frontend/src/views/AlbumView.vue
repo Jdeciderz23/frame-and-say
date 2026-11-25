@@ -2,11 +2,13 @@
 import { computed, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { albumError, listEvents, listPhotos, type AlbumEvent, type AlbumPhoto } from '../api/album'
+import type { Purpose } from '../api/consent'
 import PhotoThumbnail from '../components/PhotoThumbnail.vue'
 import { selectionTargetEditor } from '../components/selectionTargetEditor'
 import SelectionTarget from '../components/SelectionTarget.vue'
 import PhotoPreference from '../components/PhotoPreference.vue'
 import PhotoConsent from '../components/PhotoConsent.vue'
+import EventShareProgress from '../components/EventShareProgress.vue'
 import PhotoUploadForm from '../components/PhotoUploadForm.vue'
 
 const route = useRoute()
@@ -32,6 +34,7 @@ function editorFor(item: AlbumEvent) {
   return editor
 }
 
+const progressPurpose = ref<Purpose>('INTERNAL_SHARE')
 let photosRequest: AbortController | undefined
 const eventId = computed(() => typeof route.query.event === 'string' ? route.query.event : '')
 const event = computed(() => events.value.find(item => item.id === eventId.value))
@@ -117,6 +120,7 @@ async function refreshPhotos() {
 watch([token, event], (_, __, cleanup) => {
   cleanup(() => photosRequest?.abort())
   photos.value = []
+  progressPurpose.value = 'INTERNAL_SHARE'
   void refreshPhotos()
 }, { immediate: true })
 </script>
@@ -163,7 +167,6 @@ watch([token, event], (_, __, cleanup) => {
         <p class="error-message" role="alert">{{ photosError }}</p>
         <button class="button secondary" type="button" @click="refreshPhotos">重试照片列表</button>
       </div>
-      <p v-else-if="!photos.length">这个活动还没有照片。</p>
       <template v-else>
         <p v-if="route.query.photo && !activePhoto" role="status">原照片版本已不可用，请从列表重新打开。</p>
         <section v-if="activePhoto" :key="activePhoto.photoVersionId" class="photo-detail" aria-labelledby="photo-heading">
@@ -173,12 +176,17 @@ watch([token, event], (_, __, cleanup) => {
           <PhotoPreference :event-id="event.id" :photo="activePhoto" :token="token" @refresh="refreshPhotos" />
           <PhotoConsent :event-id="event.id" :photo="activePhoto" :token="token" @refresh="refreshPhotos" />
         </section>
-        <ul v-else class="photo-grid">
-          <li v-for="(photo, index) in photos" :key="photo.photoVersionId">
-            <PhotoThumbnail :event-id="event.id" :photo="photo" :token="token" :alt="`照片 ${index + 1} 缩略图`" />
-            <button class="button secondary" type="button" @click="openPhoto(photo)">打开照片 {{ index + 1 }}</button>
-          </li>
-        </ul>
+        <template v-else>
+          <EventShareProgress v-model:purpose="progressPurpose" :key="event.id"
+            :event-id="event.id" :photos="photos" :token="token" @refresh="refreshPhotos" />
+          <p v-if="!photos.length">这个活动还没有照片。</p>
+          <ul v-else class="photo-grid">
+            <li v-for="(photo, index) in photos" :key="photo.photoVersionId">
+              <PhotoThumbnail :event-id="event.id" :photo="photo" :token="token" :alt="`照片 ${index + 1} 缩略图`" />
+              <button class="button secondary" type="button" @click="openPhoto(photo)">打开照片 {{ index + 1 }}</button>
+            </li>
+          </ul>
+        </template>
       </template>
     </section>
   </section>
@@ -204,7 +212,7 @@ watch([token, event], (_, __, cleanup) => {
 .album-actions input { flex: 1 1 16rem; min-width: 0; }
 
 .album-page input,
-.album-page select {
+.album-page :deep(select) {
   min-height: 44px;
   max-width: 100%;
   padding: 8px 12px;
@@ -215,8 +223,8 @@ watch([token, event], (_, __, cleanup) => {
   font: inherit;
 }
 
-.secondary { color: var(--accent); background: #e8eddc; }
-.secondary:hover { background: #dce6ce; }
+.album-page :deep(.secondary) { color: var(--accent); background: #e8eddc; }
+.album-page :deep(.secondary:hover) { background: #dce6ce; }
 .photo-detail { display: grid; gap: 12px; max-width: 520px; }
 .photo-detail > button { justify-self: start; }
 .photo-detail h3 { scroll-margin-block: 16px; }
@@ -233,7 +241,7 @@ watch([token, event], (_, __, cleanup) => {
 
 @media (max-width: 420px) {
   .album-page { padding-block: 24px 36px; }
-  .album-page select { width: 100%; }
+  .album-page :deep(select) { width: 100%; }
   .photo-grid .button { min-height: 44px; padding-inline: 10px; }
 }
 </style>
