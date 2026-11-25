@@ -206,6 +206,72 @@ paths:
           $ref: '#/components/responses/UnsupportedImage'
         '503':
           $ref: '#/components/responses/StorageUnavailable'
+  /api/events/{eventId}/photos/{photoId}/versions:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - $ref: '#/components/parameters/PhotoId'
+    get:
+      operationId: listPhotoVersions
+      summary: 活动成员查看同一照片的版本历史
+      description: 版本按编号从大到小返回，第一项为当前版本。canCreateVersion 表示当前身份可提交新版本。
+      responses:
+        '200':
+          description: 版本历史与当前身份的写入能力
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoVersionHistory'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: createPhotoVersion
+      summary: 在同一照片下保存独立的新版本
+      description: >-
+        原上传者或本活动发起人可以提交，且必须仍为活动成员。没有上传者记录的旧照片只允许发起人提交。
+        提交时发送当前版本 ID 与一张 JPEG 或 PNG，文件、请求及像素限制同首次上传。
+        新版本从未确认的名单开始，既有版本文件、名单、偏好与授权保留。
+        当前版本变化时返回 409，调用方应刷新版本列表并请用户核对，不自动重试。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [baseVersionId, file]
+              properties:
+                baseVersionId:
+                  type: string
+                  format: uuid
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: 新版本及受保护的缩略图地址
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoVersionEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          description: 文件、multipart 请求体或图像尺寸超过限制
+        '415':
+          $ref: '#/components/responses/UnsupportedImage'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable'
   /api/events/{eventId}/photos/{photoId}/versions/{photoVersionId}/thumbnail:
     parameters:
       - $ref: '#/components/parameters/EventId'
@@ -549,6 +615,25 @@ components:
         role:
           type: string
           enum: [ORGANIZER, PARTICIPANT]
+    PhotoVersionEntry:
+      type: object
+      required: [versionNumber, photo]
+      properties:
+        versionNumber:
+          type: integer
+          minimum: 1
+        photo:
+          $ref: '#/components/schemas/PhotoMetadata'
+    PhotoVersionHistory:
+      type: object
+      required: [canCreateVersion, versions]
+      properties:
+        canCreateVersion:
+          type: boolean
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PhotoVersionEntry'
     PhotoMetadata:
       type: object
       additionalProperties: false

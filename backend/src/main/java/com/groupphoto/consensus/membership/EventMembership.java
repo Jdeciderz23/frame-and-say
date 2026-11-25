@@ -34,8 +34,12 @@ public class EventMembership {
         }
     }
 
+    public boolean isOrganizer(String eventId, String actorId) {
+        return role(eventId, actorId).filter(ORGANIZER::equals).isPresent();
+    }
+
     public void requireOrganizer(String eventId, String actorId) {
-        if (role(eventId, actorId).filter(ORGANIZER::equals).isEmpty()) {
+        if (!isOrganizer(eventId, actorId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Event organizer permission is required");
         }
     }

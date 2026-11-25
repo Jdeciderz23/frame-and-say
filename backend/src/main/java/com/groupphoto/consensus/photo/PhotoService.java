@@ -5,10 +5,12 @@ import java.io.IOException;
 import java.util.List;
 import java.util.TreeSet;
 import java.util.UUID;
+import java.util.function.Function;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -26,6 +28,8 @@ class PhotoService {
     private final TransactionTemplate transactions;
     private final PhotoImageProcessor images = new PhotoImageProcessor();
 
+    record VersionHistory(boolean canCreateVersion, List<PhotoCatalog.Version> versions) {}
+
     PhotoService(JdbcClient jdbc, EventMembership membership, PhotoCatalog catalog,
                  PhotoStorage storage, PlatformTransactionManager manager) {
         this.jdbc = jdbc;
@@ -33,38 +37,78 @@ class PhotoService {
         this.catalog = catalog;
         this.storage = storage;
         this.transactions = new TransactionTemplate(manager);
+        this.transactions.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
     }
 
     PhotoCatalog.Version upload(String eventId, String actorId, MultipartFile file) {
         membership.requireMember(eventId, actorId);
         var processed = images.process(file);
         String photoId = UUID.randomUUID().toString();
+        return storeVersion(processed, versionId -> {
+            // Serialize event quota checks and inserts across concurrent uploads.
+            membership.lockEvent(eventId);
+            membership.requireMember(eventId, actorId);
+            long count = jdbc.sql("SELECT COUNT(*) FROM photos WHERE event_id = :eventId")
+                    .param("eventId", eventId).query(Long.class).single();
+            if (count >= MAX_EVENT_PHOTOS) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "The event already has 100 photos");
+            }
+            jdbc.sql("INSERT INTO photos (id, event_id, uploader_id) VALUES (:photoId, :eventId, :actorId)")
+                    .param("photoId", photoId).param("eventId", eventId).param("actorId", actorId).update();
+            return insertVersion(eventId, photoId, versionId, 1, processed.mediaType());
+        });
+    }
+
+    VersionHistory history(String eventId, String photoId, String actorId) {
+        membership.requireMember(eventId, actorId);
+        return new VersionHistory(canCreateVersion(eventId, photoId, actorId), catalog.versions(eventId, photoId));
+    }
+
+    PhotoCatalog.Version uploadVersion(String eventId, String photoId, String baseVersionId, String actorId,
+                                       MultipartFile file) {
+        requireVersionWriter(eventId, photoId, actorId);
+        catalog.requireCurrentVersion(eventId, photoId, baseVersionId);
+        var processed = images.process(file);
+        return storeVersion(processed, versionId -> {
+            var base = catalog.lockCurrentVersion(eventId, photoId, baseVersionId);
+            requireVersionWriter(eventId, photoId, actorId);
+            // V2 starts with the schema's unconfirmed roster and has no subjects, preferences or consents.
+            return insertVersion(eventId, photoId, versionId, base.versionNumber() + 1, processed.mediaType());
+        });
+    }
+
+    private boolean canCreateVersion(String eventId, String photoId, String actorId) {
+        var owner = catalog.requirePhotoOwner(eventId, photoId);
+        return actorId.equals(owner.uploaderId()) || membership.isOrganizer(eventId, actorId);
+    }
+
+    private void requireVersionWriter(String eventId, String photoId, String actorId) {
+        membership.requireMember(eventId, actorId);
+        if (!canCreateVersion(eventId, photoId, actorId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Uploader or event organizer permission is required");
+        }
+    }
+
+    private PhotoCatalog.Version insertVersion(String eventId, String photoId, String versionId, int number,
+                                               String mediaType) {
+        jdbc.sql("""
+                INSERT INTO photo_versions (id, photo_id, event_id, version_number, media_type)
+                VALUES (:versionId, :photoId, :eventId, :number, :mediaType)
+                """).param("versionId", versionId).param("photoId", photoId).param("eventId", eventId)
+                .param("number", number).param("mediaType", mediaType).update();
+        return catalog.requireVersion(eventId, photoId, versionId);
+    }
+
+    private PhotoCatalog.Version storeVersion(PhotoImageProcessor.Processed processed,
+                                              Function<String, PhotoCatalog.Version> insert) {
         UUID storageKey = UUID.randomUUID();
-        String versionId = storageKey.toString();
         try {
             storage.save(storageKey, processed.original(), processed.thumbnail());
         } catch (IOException error) {
             throw storageUnavailable(error);
         }
         try {
-            // Serialize event quota checks and inserts across concurrent uploads.
-            return transactions.execute(status -> {
-                membership.lockEvent(eventId);
-                membership.requireMember(eventId, actorId);
-                long count = jdbc.sql("SELECT COUNT(*) FROM photos WHERE event_id = :eventId")
-                        .param("eventId", eventId).query(Long.class).single();
-                if (count >= MAX_EVENT_PHOTOS) {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT, "The event already has 100 photos");
-                }
-                jdbc.sql("INSERT INTO photos (id, event_id) VALUES (:photoId, :eventId)")
-                        .param("photoId", photoId).param("eventId", eventId).update();
-                jdbc.sql("""
-                        INSERT INTO photo_versions (id, photo_id, event_id, version_number, media_type)
-                        VALUES (:versionId, :photoId, :eventId, 1, :mediaType)
-                        """).param("versionId", versionId).param("photoId", photoId).param("eventId", eventId)
-                        .param("mediaType", processed.mediaType()).update();
-                return catalog.requireVersion(eventId, photoId, versionId);
-            });
+            return transactions.execute(status -> insert.apply(storageKey.toString()));
         } catch (RuntimeException error) {
             try {
                 storage.delete(storageKey);

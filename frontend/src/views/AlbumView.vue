@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { albumError, listEvents, listPhotos, type AlbumEvent, type AlbumPhoto } from '../api/album'
 import PhotoThumbnail from '../components/PhotoThumbnail.vue'
+import PhotoVersions from '../components/PhotoVersions.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,7 +20,8 @@ const eventsRetry = ref(0)
 const photosRetry = ref(0)
 const eventId = computed(() => typeof route.query.event === 'string' ? route.query.event : '')
 const event = computed(() => events.value.find(item => item.id === eventId.value))
-const activePhoto = computed(() => photos.value.find(item => item.photoVersionId === route.query.photo))
+const activePhoto = computed(() => photos.value.find(item =>
+  item.photoId === route.query.photo || item.photoVersionId === route.query.photo))
 const activePhotoNumber = computed(() => activePhoto.value ? photos.value.indexOf(activePhoto.value) + 1 : 0)
 
 function connect() {
@@ -42,7 +44,20 @@ function chooseEvent(eventId: string) {
 }
 
 function openPhoto(photo?: AlbumPhoto) {
-  void router.push({ query: { event: eventId.value, photo: photo?.photoVersionId } })
+  void router.push({ query: { event: eventId.value, photo: photo?.photoId } })
+}
+
+async function updatePhotoVersion(photo: AlbumPhoto) {
+  const currentEventId = eventId.value
+  const currentToken = token.value
+  const current = activePhoto.value
+  if (!current || current.photoId !== photo.photoId) return
+  if (route.query.photo === current.photoVersionId) {
+    await router.replace({ query: { ...route.query, photo: photo.photoId } })
+  }
+  if (eventId.value === currentEventId && token.value === currentToken) {
+    photos.value = photos.value.map(item => item.photoId === photo.photoId ? photo : item)
+  }
 }
 
 watch([token, eventsRetry], async ([currentToken], _, cleanup) => {
@@ -123,10 +138,11 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
       </div>
       <p v-else-if="!photos.length">这个活动还没有照片。</p>
       <template v-else>
-        <section v-if="activePhoto" :key="activePhoto.photoVersionId" class="photo-detail" aria-labelledby="photo-heading">
+        <section v-if="activePhoto" :key="activePhoto.photoId" class="photo-detail" aria-labelledby="photo-heading">
           <button type="button" class="button secondary" @click="openPhoto()">返回照片列表</button>
           <h3 id="photo-heading">照片 {{ activePhotoNumber }}</h3>
-          <PhotoThumbnail :event-id="event.id" :photo="activePhoto" :token="token" :alt="`照片 ${activePhotoNumber} 缩略图`" />
+          <PhotoVersions :event-id="event.id" :photo="activePhoto" :token="token"
+            :alt="`照片 ${activePhotoNumber} 缩略图`" @current-version="updatePhotoVersion" />
         </section>
         <ul v-else class="photo-grid">
           <li v-for="(photo, index) in photos" :key="photo.photoVersionId">
