@@ -40,6 +40,13 @@ if (phase === 'create') {
   await request(`${root}/members`, {
     method: 'POST', token: organizer, body: { userId: 'participant' }, status: 204,
   });
+  const members = await (await request(`${root}/members`, { token: participant })).json();
+  assert.equal(members.find((member) => member.userId === 'organizer')?.role, 'ORGANIZER');
+  assert.equal(members.find((member) => member.userId === 'participant')?.role, 'PARTICIPANT');
+  const otherEvent = await (await request('/api/events', {
+    method: 'POST', token: participant, body: { name: 'Separate authorization activity' }, status: 201,
+  })).json();
+  await request(`/api/events/${otherEvent.id}/members`, { token: organizer, status: 403 });
   // Synthetic 2x2 RGB PNG with no photo or metadata.
   const pixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP4z8DAAMIM/4EAAB/uBfsL2WiLAAAAAElFTkSuQmCC', 'base64');
   const upload = new FormData();
@@ -52,19 +59,53 @@ if (phase === 'create') {
   const resource = `${root}/photos/${photo.photoId}`;
   const subjects = `${resource}/versions/${photo.photoVersionId}/subjects`;
   const consents = `${resource}/consents/me`;
+  await request(`/api/events/${otherEvent.id}/photos/${photo.photoId}/consents/me?photoVersionId=${photo.photoVersionId}&purpose=PUBLIC_POST`, {
+    token: participant, status: 404,
+  });
   const roster = await (await request(subjects, {
     method: 'PUT', token: organizer, body: { subjectRevision: photo.subjectRevision, userIds: ['participant'] },
   })).json();
   const consent = { photoVersionId: photo.photoVersionId, purpose: 'PUBLIC_POST', decision: 'ALLOW' };
+  const readConsent = async (purpose, token = participant) =>
+    (await request(`${consents}?photoVersionId=${photo.photoVersionId}&purpose=${purpose}`, { token })).json();
+  assert.equal((await readConsent('PUBLIC_POST')).decision, 'PENDING');
+  await request(consents, { method: 'PUT', token: organizer, body: { ...consent, subjectRevision: roster.subjectRevision }, status: 403 });
+  await request(consents, {
+    method: 'PUT', token: organizer,
+    body: { ...consent, subjectRevision: roster.subjectRevision, userId: 'participant' }, status: 400,
+  });
   await request(consents, { method: 'PUT', token: participant, body: { ...consent, subjectRevision: roster.subjectRevision }, status: 204 });
+  assert.equal((await readConsent('PUBLIC_POST')).decision, 'ALLOW');
+  assert.equal((await readConsent('PUBLIC_POST', organizer)).canDecide, false);
+  assert.equal((await readConsent('INTERNAL_SHARE')).decision, 'PENDING');
+  await request(consents, {
+    method: 'PUT', token: participant,
+    body: { ...consent, purpose: 'INTERNAL_SHARE', decision: 'DENY', subjectRevision: roster.subjectRevision }, status: 204,
+  });
+  assert.equal((await readConsent('INTERNAL_SHARE')).decision, 'DENY');
+  assert.equal((await readConsent('PUBLIC_POST')).decision, 'ALLOW');
   await request(subjects, {
     method: 'PUT', token: organizer, body: { subjectRevision: roster.subjectRevision, userIds: ['organizer', 'participant'] },
   });
   await request(consents, { method: 'PUT', token: participant, body: { ...consent, subjectRevision: roster.subjectRevision }, status: 409 });
-  const current = await (await request(`${consents}?photoVersionId=${photo.photoVersionId}&purpose=PUBLIC_POST`, { token: participant })).json();
+  const current = await readConsent('PUBLIC_POST');
   assert.equal(current.decision, 'PENDING');
+  assert.equal(current.canDecide, true);
+  assert.equal(current.subjectRevision, roster.subjectRevision + 1);
+  assert.equal((await readConsent('INTERNAL_SHARE')).decision, 'PENDING');
+  // A new explicit confirmation uses freshly read context; the old decision is never replayed automatically.
+  await request(consents, {
+    method: 'PUT', token: participant,
+    body: { ...consent, subjectRevision: current.subjectRevision }, status: 204,
+  });
+  await request(consents, {
+    method: 'PUT', token: organizer,
+    body: { ...consent, subjectRevision: current.subjectRevision }, status: 204,
+  });
+  assert.equal((await readConsent('PUBLIC_POST')).decision, 'ALLOW');
+  assert.equal((await readConsent('PUBLIC_POST', organizer)).decision, 'ALLOW');
   writeFileSync(statePath, JSON.stringify({ eventId, photoId: photo.photoId, thumbnailUrl: photo.thumbnailUrl }), { mode: 0o600 });
-  console.log('Authenticated events, member access, private upload and consent invalidation verified through the proxy');
+  console.log('Two identities, activity isolation, personal consent, independent purposes and stale-revision refresh verified through the proxy');
 } else {
   const { eventId, photoId, thumbnailUrl } = JSON.parse(readFileSync(statePath, 'utf8'));
   const events = await (await request('/api/events', { token: participant })).json();
