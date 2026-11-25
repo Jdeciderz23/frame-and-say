@@ -80,6 +80,33 @@ paths:
                   $ref: '#/components/schemas/Event'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+  /api/events/{eventId}/selection-target:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    put:
+      operationId: setSelectionTarget
+      summary: 发起人设置或调整本活动的目标选片数
+      x-implementation-status: implemented
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [desiredPhotoCount]
+              properties:
+                desiredPhotoCount:
+                  $ref: '#/components/schemas/PhotoCount'
+      responses:
+        '204':
+          description: 已保存，通过活动列表读取当前值
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/events/{eventId}/members:
     parameters:
       - $ref: '#/components/parameters/EventId'
@@ -526,8 +553,12 @@ components:
       minimum: 0
     Event:
       type: object
-      required: [id, name]
+      required: [id, name, memberRole]
       properties:
+        memberRole:
+          type: string
+          enum: [ORGANIZER, PARTICIPANT]
+          description: 当前调用者在这项活动中的角色
         id:
           type: string
           format: uuid

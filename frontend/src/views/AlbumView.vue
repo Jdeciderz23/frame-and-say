@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { albumError, listEvents, listPhotos, type AlbumEvent, type AlbumPhoto } from '../api/album'
 import PhotoThumbnail from '../components/PhotoThumbnail.vue'
+import SelectionTarget from '../components/SelectionTarget.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -116,6 +117,7 @@ watch([token, event, photosRetry], async ([currentToken, currentEvent], _, clean
 
     <section v-if="event" aria-labelledby="album-heading">
       <h2 id="album-heading">{{ event.name }}</h2>
+      <SelectionTarget :key="event.id" :event="event" :token="token" @saved="event.desiredPhotoCount = $event" />
       <p v-if="photosLoading" role="status">正在加载照片…</p>
       <div v-else-if="photosError">
         <p class="error-message" role="alert">{{ photosError }}</p>

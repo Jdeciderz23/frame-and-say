@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { listPhotos, readThumbnail } from './album'
+import { listPhotos, readThumbnail, setSelectionTarget } from './album'
 
 const photo = { photoId: 'photo', photoVersionId: 'version', thumbnailAvailable: true }
 
@@ -7,6 +7,17 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('event photo browsing', () => {
   const signal = new AbortController().signal
+
+  it('updates only the selected event target using the caller token', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await setSelectionTarget('event-a', 4, 'current-member', signal)
+    const [path, options] = fetchMock.mock.calls[0]
+    expect(path).toBe('/api/events/event-a/selection-target')
+    expect(options.headers.get('Authorization')).toBe('Bearer current-member')
+    expect(options.method).toBe('PUT')
+    expect(JSON.parse(options.body)).toStrictEqual({ desiredPhotoCount: 4 })
+  })
 
   it('returns an empty list for an accessible empty event', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json([])))
