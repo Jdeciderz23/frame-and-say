@@ -792,8 +792,10 @@ components:
           type: boolean
     Selection:
       type: object
-      required: [selectedPhotoVersionIds, requestedCount, complete, reasons, metrics]
+      required: [purpose, selectedPhotoVersionIds, requestedCount, complete, reasons, metrics]
       properties:
+        purpose:
+          $ref: '#/components/schemas/Purpose'
         selectedPhotoVersionIds:
           type: array
           items:
