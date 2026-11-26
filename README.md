@@ -13,7 +13,7 @@
 
 ## 本地运行
 
-需要 Java 21、Node.js 24 和 pnpm 11.25.0，Maven 由 Wrapper 提供。在仓库根目录运行：
+需要 Java 21、Node.js 24 和 pnpm 11.25.0，Maven 由 Wrapper 提供。使用 Windows PowerShell 时见 [Windows 本地启动](docs/windows-local-development.md#powershell-启动)。使用 Shell 时，在仓库根目录运行：
 
 ```sh
 ./scripts/init-env.sh
