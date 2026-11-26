@@ -56,7 +56,7 @@ public final class FairSelector {
 
         boolean complete = selected.size() == input.requestedCount();
         List<String> selectedIds = selected.stream().map(Candidate::photoVersionId).toList();
-        return new SelectionResult(selectedIds, input.requestedCount(), complete,
+        return new SelectionResult(input.purpose(), selectedIds, input.requestedCount(), complete,
                 filtered.toReasonCounts(), metrics(eligible.size(), memberIds, utilities));
     }
 

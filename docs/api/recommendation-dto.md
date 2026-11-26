@@ -84,7 +84,7 @@
 | `AUTHORIZATION_REQUIRED` | `CONSENT_DENIED` + `CONSENT_PENDING` 的照片数量 |
 | `INSUFFICIENT_CANDIDATES` | `shortfall` |
 
-`SelectionResult` 与 OpenAPI 的 `Selection` 结构一致：`selectedPhotoVersionIds`、`requestedCount`、`complete`、`reasons`、`metrics`。当前只定义结果结构。JSON 响应始终包含 `metrics` 对象。未计算的效用在 Java 中为 `null`，序列化时省略对应字段。
+`SelectionResult` 与 OpenAPI 的 `Selection` 结构一致：`purpose`、`selectedPhotoVersionIds`、`requestedCount`、`complete`、`reasons`、`metrics`。`purpose` 回填本次选片的授权用途（`INTERNAL_SHARE` / `PUBLIC_POST`）：同一套候选与评分在两个用途下选片序列相同，但用途是选片记录的归属，结果必须显式保留，调用方据此区分归属（#12）。JSON 响应始终包含 `metrics` 对象。未计算的效用在 Java 中为 `null`，序列化时省略对应字段。
 
 ## 模拟数据
 
@@ -100,8 +100,8 @@
 
 `FairSelector.select(input)` 是唯一入口：结构校验 → 硬约束过滤 → 贪心 max-min 选择 → 汇总指标与原因，返回 `SelectionResult`。
 
-- **成员效用** = 该成员对已入选照片的评分之和；未评分（`null`）按 0 计入，与评分为 0 同等参与求和。
-- **贪心 max-min**：每步在剩余可选候选中选一个，使「最小成员效用」最大；并列比较总效用；仍并列按 `photoVersionId` 字典序取最小者。结果确定、可重复。
+- **成员效用** = 该成员对已入选照片的评分之和；未评分（`null`）暂按 0 计入，与评分为 0 同等参与求和。这是原型口径，见下方待确认清单第 3 条。
+- **贪心 max-min**：每步在剩余可选候选中选一个，使「最小成员效用」最大；并列比较总效用；仍并列按 `photoVersionId` 字典序取最小者。结果确定、可重复。这是启发式原型口径，见下方待确认清单第 4 条。
 - **指标**：`eligiblePhotoCount` 为可选候选数；`minimumMemberUtility` / `totalMemberUtility` 由算法计算。成员为空时 `minimumMemberUtility` 为 `null`（无成员可求最小值）。
 - **完整度**：凑够 `requestedCount` 时 `complete = true`；否则选中全部可选候选并 `complete = false`，`reasons` 由 `FilteredCandidates.toReasonCounts()` 给出（含 `INSUFFICIENT_CANDIDATES` 缺口）。
 
@@ -113,6 +113,8 @@
 
 1. 评分档位维持 `-1 / 0 / 1` 三档。
 2. 目标数量缺省取活动的 `desiredPhotoCount`。
+3. 未评分（`null`）暂按 0 计入成员效用，与评分为 0 同等参与求和；是否区分「未评分」与「评 0 分」待确认。
+4. 公平排序采用贪心 max-min：每步最大化最小成员效用，并列比较总效用，再并列按 `photoVersionId` 字典序取最小。这是启发式，不保证全局最优（leximin），是否替换为精确求解待确认。
 
 ## 运行
 

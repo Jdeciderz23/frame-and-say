@@ -136,6 +136,22 @@ class FairSelectorTest {
     }
 
     @Test
+    void purposeIsRetainedSoInternalShareAndPublicPostResultsAreDistinguishable() {
+        SelectionInput sample = SyntheticScenario.sample();
+        SelectionInput publicPost = new SelectionInput(sample.eventId(), Purpose.PUBLIC_POST,
+                sample.requestedCount(), sample.members(), sample.candidates(), sample.preferences());
+
+        SelectionResult internal = FairSelector.select(sample);
+        SelectionResult external = FairSelector.select(publicPost);
+
+        // 同一套候选与评分，两种用途产出相同选片序列；但结果显式保留用途，调用方可区分归属。
+        assertThat(internal.purpose()).isEqualTo(Purpose.INTERNAL_SHARE);
+        assertThat(external.purpose()).isEqualTo(Purpose.PUBLIC_POST);
+        assertThat(internal.selectedPhotoVersionIds()).isEqualTo(external.selectedPhotoVersionIds());
+        assertThat(internal).isNotEqualTo(external);
+    }
+
+    @Test
     void fairSelectionSacrificesTotalUtilityToRaiseTheMinimum() {
         List<String> members = List.of("a", "b", "c");
         SelectionInput input = input(2, members,
