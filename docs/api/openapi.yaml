@@ -207,7 +207,7 @@ paths:
       operationId: approvePhotoDeletion
       summary: 活动发起人批准已有的删除申请
       x-implementation-status: implemented
-      description: 批准后相册隐藏该照片，所有历史和当前缩略图地址失效，包含其版本的确认清单拒绝导出。重复批准返回原记录。
+      description: 批准后相册与分享进度隐藏该照片，所有历史和当前版本链接失效，包含其版本的确认清单拒绝导出。重复批准返回原记录。
       responses:
         '200':
           $ref: '#/components/responses/PhotoDeletionRecord'
@@ -379,6 +379,27 @@ paths:
           $ref: '#/components/responses/UnsupportedImage'
         '503':
           $ref: '#/components/responses/StorageUnavailable'
+  /api/events/{eventId}/photos/versions/{photoVersionId}/metadata:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - $ref: '#/components/parameters/PhotoVersionPath'
+    get:
+      operationId: resolvePhotoVersion
+      summary: 按版本 ID 定位活动内的照片
+      description: 用于恢复曾只携带版本 ID 的相册链接。活动成员可以定位当前或历史版本。
+      responses:
+        '200':
+          description: 对应版本及所属照片
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoVersionEntry'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/events/{eventId}/photos/{photoId}/versions:
     parameters:
       - $ref: '#/components/parameters/EventId'
@@ -408,6 +429,7 @@ paths:
         提交时发送当前版本 ID 与一张 JPEG 或 PNG，文件、请求及像素限制同首次上传。
         新版本从未确认的名单开始，既有版本文件、名单、偏好与授权保留。
         当前版本变化时返回 409，调用方应刷新版本列表并请用户核对，不自动重试。
+        网关返回 502 或 504、或连接中断时，服务端可能已保存版本。调用方应先读取版本列表确认结果。
       requestBody:
         required: true
         content:
@@ -681,6 +703,36 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/events/{eventId}/consent-progress:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      operationId: getPublicationConsentProgress
+      summary: 查询指定用途的分享确认进度
+      description: 仅活动发起人可查看当前版本是否具备分享条件。待确认和拒绝均显示为需处理。
+      x-implementation-status: implemented
+      x-task-id: US-07
+      parameters:
+        - name: purpose
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Purpose'
+      responses:
+        '200':
+          description: 当前照片版本的汇总状态
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PhotoConsentProgress'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/events/{eventId}/selections:
     parameters:
       - $ref: '#/components/parameters/EventId'
@@ -934,10 +986,25 @@ components:
           enum: [PENDING, ALLOW, DENY]
         canDecide:
           type: boolean
+    PhotoConsentProgress:
+      type: object
+      additionalProperties: false
+      required: [photoId, photoVersionId, eligible]
+      properties:
+        photoId:
+          type: string
+          format: uuid
+        photoVersionId:
+          type: string
+          format: uuid
+        eligible:
+          type: boolean
     Selection:
       type: object
-      required: [selectedPhotoVersionIds, requestedCount, complete, reasons, metrics]
+      required: [purpose, selectedPhotoVersionIds, requestedCount, complete, reasons, metrics]
       properties:
+        purpose:
+          $ref: '#/components/schemas/Purpose'
         selectedPhotoVersionIds:
           type: array
           items:

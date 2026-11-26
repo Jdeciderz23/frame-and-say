@@ -64,6 +64,11 @@ class PhotoService {
         return new VersionHistory(canCreateVersion(eventId, photoId, actorId), catalog.versions(eventId, photoId));
     }
 
+    PhotoCatalog.Version resolveVersion(String eventId, String versionId, String actorId) {
+        membership.requireMember(eventId, actorId);
+        return catalog.resolveVersion(eventId, versionId);
+    }
+
     PhotoCatalog.Version uploadVersion(String eventId, String photoId, String baseVersionId, String actorId,
                                        MultipartFile file) {
         requireVersionWriter(eventId, photoId, actorId);

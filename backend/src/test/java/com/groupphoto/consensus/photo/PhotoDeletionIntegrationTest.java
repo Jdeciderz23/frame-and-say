@@ -5,6 +5,7 @@ import static com.groupphoto.consensus.support.SyntheticActors.ORGANIZER_PROPERT
 import static com.groupphoto.consensus.support.SyntheticActors.PARTICIPANT;
 import static com.groupphoto.consensus.support.SyntheticActors.PARTICIPANT_PROPERTY;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.mockito.Mockito.doAnswer;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -66,6 +67,8 @@ class PhotoDeletionIntegrationTest {
         confirmEmptyRoster(event, other);
         String export = confirmSelection(event, latest, other);
         String request = resource + "/deletion-request";
+        String progress = "/api/events/" + event + "/consent-progress?purpose=INTERNAL_SHARE";
+        String remainingVersion = other.required("photoVersionId").asText();
         String entry = submit(request, PARTICIPANT);
         assertThat(submit(request, PARTICIPANT)).isEqualTo(entry);
         mvc.perform(get(request).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
@@ -74,7 +77,13 @@ class PhotoDeletionIntegrationTest {
         for (JsonNode version : new JsonNode[]{original, latest}) {
             mvc.perform(get(version.required("thumbnailUrl").asText()).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
                     .andExpect(status().isOk()).andExpect(content().contentType(MediaType.IMAGE_PNG));
+            mvc.perform(get(legacyMetadata(event, version)).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                    .andExpect(status().isOk());
         }
+        mvc.perform(get(progress).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[*].photoVersionId",
+                        containsInAnyOrder(latest.required("photoVersionId").asText(), remainingVersion)));
         mvc.perform(get(export).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
                 .andExpect(status().isOk()).andExpect(content().contentType("application/zip"));
 
@@ -93,18 +102,25 @@ class PhotoDeletionIntegrationTest {
             mvc.perform(get(version.required("thumbnailUrl").asText()).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
                     .andExpect(status().isNotFound())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
+            mvc.perform(get(legacyMetadata(event, version)).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                    .andExpect(status().isNotFound());
         }
         mvc.perform(get(resource + "/versions").header(HttpHeaders.AUTHORIZATION, ORGANIZER))
                 .andExpect(status().isNotFound());
         mvc.perform(get(photos(event)).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].photoId").value(other.required("photoId").asText()));
+        mvc.perform(get(progress).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].photoId").value(other.required("photoId").asText()))
+                .andExpect(jsonPath("$[0].photoVersionId").value(remainingVersion))
+                .andExpect(jsonPath("$[0].eligible").value(true));
         assertInvalidExport(export);
 
         byte[] remaining = mvc.perform(get(confirmSelection(event, other)).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
         try (var zip = new ZipInputStream(new ByteArrayInputStream(remaining))) {
-            assertThat(zip.getNextEntry().getName()).isEqualTo(other.required("photoVersionId").asText() + ".png");
+            assertThat(zip.getNextEntry().getName()).isEqualTo(remainingVersion + ".png");
             assertThat(zip.getNextEntry()).isNull();
         }
     }
@@ -210,5 +226,9 @@ class PhotoDeletionIntegrationTest {
 
     private static String photos(String event) {
         return "/api/events/" + event + "/photos";
+    }
+
+    private static String legacyMetadata(String event, JsonNode version) {
+        return photos(event) + "/versions/" + version.required("photoVersionId").asText() + "/metadata";
     }
 }

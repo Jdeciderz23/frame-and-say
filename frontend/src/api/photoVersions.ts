@@ -1,4 +1,4 @@
-import { albumRequest, photoPath, type AlbumPhoto } from './album'
+import { albumRequest, eventPath, photoPath, type AlbumPhoto } from './album'
 
 export interface VersionEntry {
   versionNumber: number
@@ -16,6 +16,11 @@ function versionsPath(eventId: string, photoId: string) {
 
 export async function listVersions(eventId: string, photoId: string, token: string, signal: AbortSignal): Promise<PhotoVersionHistory> {
   return (await albumRequest(versionsPath(eventId, photoId), token, { signal })).json()
+}
+
+export async function resolveVersion(eventId: string, versionId: string, token: string, signal: AbortSignal): Promise<VersionEntry> {
+  const path = `${eventPath(eventId)}/photos/versions/${encodeURIComponent(versionId)}/metadata`
+  return (await albumRequest(path, token, { signal })).json()
 }
 
 export async function saveVersion(

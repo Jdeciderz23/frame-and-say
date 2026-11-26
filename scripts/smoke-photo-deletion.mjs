@@ -20,13 +20,15 @@ async function request(path, { method = 'GET', token = organizer, body, expected
   return response;
 }
 
-async function verify({ photos, removed, kept, deletionRequest, approval, exportPath }) {
-  for (const thumbnail of removed) {
-    const missing = await request(thumbnail, { token: participant, expected: 404 });
+async function verify({ photos, removed, kept, progress, deletionRequest, approval, exportPath }) {
+  for (const path of removed) {
+    const missing = await request(path, { token: participant, expected: 404 });
     assert.match(missing.headers.get('content-type') || '', /application\/problem\+json/);
   }
   const currentAlbum = await (await request(photos, { token: participant })).json();
-  assert.deepEqual(currentAlbum.map(item => item.photoId), [kept]);
+  assert.deepEqual(currentAlbum.map(item => item.photoId), [kept.photoId]);
+  const currentProgress = await (await request(progress)).json();
+  assert.deepEqual(currentProgress, [kept]);
   const revoked = await request(exportPath, { expected: 409 });
   assert.equal(revoked.headers.get('content-disposition'), null);
   assert.match(revoked.headers.get('content-type') || '', /application\/problem\+json/);
@@ -36,11 +38,12 @@ async function verify({ photos, removed, kept, deletionRequest, approval, export
 
 if (phase === 'verify') {
   await verify(JSON.parse(readFileSync(statePath, 'utf8')));
-  console.log('After restart, both old links and the old export still fail; the approval record is unchanged.');
+  console.log('After restart, old version links and export remain unavailable, with only the surviving photo in progress.');
 } else {
   const event = await (await request('/api/events', { method: 'POST', body: { name: 'Photo deletion smoke' }, expected: 201 })).json();
   const root = '/api/events/' + event.id;
   const photos = root + '/photos';
+  const progress = root + '/consent-progress?purpose=INTERNAL_SHARE';
   await request(root + '/members', { method: 'POST', body: { userId: 'participant' }, expected: 204 });
   const png = [
     Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP4z8DAAMIM/4EAAB/uBfsL2WiLAAAAAElFTkSuQmCC', 'base64'),
@@ -76,12 +79,19 @@ if (phase === 'verify') {
   assert.equal(before.headers.get('content-type'), 'application/zip');
   await before.arrayBuffer();
   await request(original.thumbnailUrl, { token: participant });
+  const beforeProgress = await (await request(progress)).json();
+  assert.deepEqual(beforeProgress.map(item => item.photoVersionId).sort(), [edited.photoVersionId, other.photoVersionId].sort());
   await request(deletionRequest + '/approval', { method: 'PUT', token: participant, expected: 403 });
   const approval = await (await request(deletionRequest + '/approval', { method: 'PUT' })).json();
   assert.equal(approval.status, 'APPROVED');
   assert.equal(approval.processedBy, 'organizer');
   assert.ok(Date.parse(approval.processedAt) >= Date.parse(approval.requestedAt));
-  const state = { photos, removed: [original.thumbnailUrl, edited.thumbnailUrl], kept: other.photoId, deletionRequest, approval, exportPath };
+  const removed = [original, edited].flatMap(item => [
+    item.thumbnailUrl,
+    `${photos}/versions/${item.photoVersionId}/metadata`,
+  ]);
+  const kept = { photoId: other.photoId, photoVersionId: other.photoVersionId, eligible: true };
+  const state = { photos, removed, kept, progress, deletionRequest, approval, exportPath };
   await verify(state);
   writeFileSync(statePath, JSON.stringify(state), { mode: 0o600 });
   console.log('Uploader requested deletion. Organizer approved; no old image or ZIP served and approval is auditable.');

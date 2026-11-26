@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.groupphoto.consensus.authorization.Publications.Purpose;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -22,7 +23,7 @@ class SelectionResultSerializationTest {
     @Test
     void uncomputedUtilityFieldsAreOmittedNotEmittedAsNull() {
         SelectionResult.Metrics metrics = new SelectionResult.Metrics(0, null, null);
-        SelectionResult result = new SelectionResult(List.of(), 3, false,
+        SelectionResult result = new SelectionResult(Purpose.INTERNAL_SHARE, List.of(), 3, false,
                 List.of(new SelectionResult.ReasonCount(SelectionResult.ReasonCode.INSUFFICIENT_CANDIDATES, 3)),
                 metrics);
 
@@ -35,8 +36,18 @@ class SelectionResultSerializationTest {
     }
 
     @Test
+    void purposeIsSerializedAsEnumName() {
+        SelectionResult result = new SelectionResult(Purpose.PUBLIC_POST, List.of(), 3, false, List.of(),
+                new SelectionResult.Metrics(0, null, null));
+
+        JsonNode node = json.valueToTree(result);
+
+        assertThat(node.path("purpose").asText()).isEqualTo("PUBLIC_POST");
+    }
+
+    @Test
     void metricsObjectMustBePresent() {
-        assertThatThrownBy(() -> new SelectionResult(List.of(), 3, false, List.of(), null))
+        assertThatThrownBy(() -> new SelectionResult(Purpose.INTERNAL_SHARE, List.of(), 3, false, List.of(), null))
                 .isInstanceOf(NullPointerException.class);
     }
 }
