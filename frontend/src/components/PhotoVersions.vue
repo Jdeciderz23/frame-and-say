@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { AlbumRequestError, albumError, type AlbumPhoto } from '../api/album'
+import { AlbumRequestError, albumError, photoUploadOutcomeUnknown, type AlbumPhoto } from '../api/album'
 import { listVersions, saveVersion, type PhotoVersionHistory } from '../api/photoVersions'
 import PhotoThumbnail from './PhotoThumbnail.vue'
 
-const props = defineProps<{ eventId: string; photo: AlbumPhoto; token: string; alt: string }>()
-const emit = defineEmits<{ currentVersion: [photo: AlbumPhoto] }>()
+const props = defineProps<{ eventId: string; photo: AlbumPhoto; token: string; alt: string; selectedVersionId: string }>()
+const emit = defineEmits<{ currentVersion: [photo: AlbumPhoto]; selectVersion: [versionId: string] }>()
 const history = shallowRef<PhotoVersionHistory>()
-const selectedId = ref('')
 const latest = computed(() => history.value?.versions[0])
-const selected = computed(() => history.value?.versions.find(item => item.photo.photoVersionId === selectedId.value) ?? latest.value)
+const selected = computed(() => props.selectedVersionId
+  ? history.value?.versions.find(item => item.photo.photoVersionId === props.selectedVersionId)
+  : latest.value)
 const input = ref<HTMLInputElement>()
 const retry = ref(0)
 const loading = ref(false)
@@ -20,7 +21,7 @@ const saved = ref('')
 const refreshNeeded = ref(false)
 let pending: AbortController | undefined
 
-watch(() => [props.eventId, props.photo.photoId, props.token, retry.value] as const,
+watch([() => props.eventId, () => props.photo.photoId, () => props.token, retry],
   async ([eventId, photoId, token], _, cleanup) => {
     const controller = new AbortController()
     cleanup(() => { controller.abort(); pending?.abort() })
@@ -30,11 +31,16 @@ watch(() => [props.eventId, props.photo.photoId, props.token, retry.value] as co
     try {
       const result = await listVersions(eventId, photoId, token, controller.signal)
       if (controller.signal.aborted) return
-      selectedId.value = result.versions[0]?.photo.photoVersionId ?? ''
       history.value = result
+      const current = result.versions[0]
+      if (refreshNeeded.value && current) {
+        emit('selectVersion', current.photo.photoVersionId)
+        saveError.value = ''
+        saved.value = '版本列表已刷新。请核对当前照片。'
+      }
       refreshNeeded.value = false
-      if (result.versions[0] && result.versions[0].photo.photoVersionId !== props.photo.photoVersionId) {
-        emit('currentVersion', result.versions[0].photo)
+      if (current && current.photo.photoVersionId !== props.photo.photoVersionId) {
+        emit('currentVersion', current.photo)
       }
     } catch (error) {
       if (!controller.signal.aborted) historyError.value = albumError(error)
@@ -64,20 +70,20 @@ async function submit() {
       file, props.token, controller.signal)
     if (controller.signal.aborted) return
     history.value = { ...snapshot, versions: [version, ...snapshot.versions] }
-    selectedId.value = version.photo.photoVersionId
+    emit('selectVersion', version.photo.photoVersionId)
     if (input.value) input.value.value = ''
     saved.value = `已保存版本 ${version.versionNumber}。出镜名单和分享授权需要重新确认。`
     emit('currentVersion', version.photo)
   } catch (error) {
     if (controller.signal.aborted) return
-    if (!(error instanceof AlbumRequestError) || error.status === 409) {
+    if (photoUploadOutcomeUnknown(error) || (error instanceof AlbumRequestError && error.status === 409)) {
       refreshNeeded.value = true
-      saveError.value = error instanceof AlbumRequestError
+      saveError.value = error instanceof AlbumRequestError && error.status === 409
         ? '当前版本已更新。请刷新版本并确认最新照片，再重新选择文件。'
         : '无法确认保存结果。请先刷新版本列表，再决定是否重试。'
-    } else if (error.status === 415) {
+    } else if (error instanceof AlbumRequestError && error.status === 415) {
       saveError.value = '所选文件不是可解码的 JPEG 或 PNG。'
-    } else if (error.status === 413) {
+    } else if (error instanceof AlbumRequestError && error.status === 413) {
       saveError.value = '照片超出文件大小或像素限制。'
     } else {
       saveError.value = albumError(error)
@@ -98,16 +104,19 @@ async function submit() {
       <p class="error-message" role="alert">{{ historyError }}</p>
       <button class="button secondary" type="button" @click="retry++">重试版本列表</button>
     </div>
-    <template v-if="selected && latest">
+    <template v-if="latest">
       <label for="photo-version">照片版本</label>
-      <select id="photo-version" v-model="selectedId" :disabled="saving">
+      <select id="photo-version" :value="selected?.photo.photoVersionId ?? ''" :disabled="saving"
+        @change="emit('selectVersion', ($event.target as HTMLSelectElement).value)">
+        <option v-if="!selected" value="" disabled>链接中的版本不可用</option>
         <option v-for="item in history?.versions" :key="item.photo.photoVersionId" :value="item.photo.photoVersionId">
           版本 {{ item.versionNumber }}{{ item === latest ? '（当前）' : '' }}
         </option>
       </select>
-      <p v-if="selected === latest && !selected.photo.rosterConfirmed" class="muted">当前版本的出镜名单尚未确认。</p>
+      <p v-if="selected === latest && !latest.photo.rosterConfirmed" class="muted">当前版本的出镜名单尚未确认。</p>
     </template>
-    <PhotoThumbnail :event-id="eventId" :photo="selected?.photo ?? photo" :token="token"
+    <p v-if="history && selectedVersionId && !selected" role="status">该照片没有链接中指定的版本。</p>
+    <PhotoThumbnail v-if="selected || !selectedVersionId" :event-id="eventId" :photo="selected?.photo ?? photo" :token="token"
       :alt="selected ? `版本 ${selected.versionNumber} 缩略图` : alt" />
 
     <form v-if="history?.canCreateVersion && latest && selected === latest && !refreshNeeded" class="save-version" @submit.prevent="submit">
@@ -122,7 +131,8 @@ async function submit() {
     <p v-if="saved" role="status">{{ saved }}</p>
     <p v-if="saveError" class="error-message" role="alert">{{ saveError }}</p>
     <button v-if="refreshNeeded && !loading && !historyError" class="button secondary" type="button"
-      @click="saveError = ''; retry++">刷新版本列表</button>
+      @click="retry++">刷新版本列表</button>
+    <slot v-if="selected && selected === latest && !refreshNeeded" :photo="selected.photo" />
   </div>
 </template>
 

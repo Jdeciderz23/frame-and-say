@@ -96,6 +96,19 @@ class PhotoVersionIntegrationTest {
                 .andExpect(jsonPath("$.versions[0].photo.photoVersionId").value(current))
                 .andExpect(jsonPath("$.versions[1].photo.photoVersionId").value(base))
                 .andExpect(jsonPath("$.versions[1].photo.rosterConfirmed").value(true));
+        String lookupSuffix = "/versions/" + base + "/metadata";
+        String legacyLookup = photos(event) + lookupSuffix;
+        mvc.perform(get(legacyLookup).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.versionNumber").value(1))
+                .andExpect(jsonPath("$.photo.photoId").value(photo))
+                .andExpect(jsonPath("$.photo.photoVersionId").value(base))
+                .andExpect(jsonPath("$.photo.thumbnailUrl").value(oldThumbnail));
+        mvc.perform(get(legacyLookup)).andExpect(status().isUnauthorized());
+        String separateEvent = createEvent(false);
+        mvc.perform(get(photos(separateEvent) + lookupSuffix).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isForbidden());
+        mvc.perform(get(photos(separateEvent) + lookupSuffix).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isNotFound());
         mvc.perform(get(photos(event)).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].photoVersionId").value(current));

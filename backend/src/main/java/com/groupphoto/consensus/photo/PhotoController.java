@@ -54,6 +54,11 @@ class PhotoController {
         return new VersionHistory(history.canCreateVersion(), history.versions().stream().map(VersionEntry::from).toList());
     }
 
+    @GetMapping("/versions/{photoVersionId}/metadata")
+    VersionEntry resolveVersion(@PathVariable String eventId, @PathVariable String photoVersionId) {
+        return VersionEntry.from(photos.resolveVersion(eventId, photoVersionId, actor.requireId()));
+    }
+
     @PostMapping(value = "/{photoId}/versions", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     VersionEntry uploadVersion(@PathVariable String eventId, @PathVariable String photoId,

@@ -1,5 +1,5 @@
 name: 开发任务
-description: 前两周任务、调研、设计与工程工作
+description: 跟踪功能、调研、设计及工程维护任务
 title: "[task] "
 body:
   - type: textarea
