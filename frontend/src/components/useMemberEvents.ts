@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { AlbumRequestError, albumError, createEvent, listEvents, type AlbumEvent } from '../api/album'
+import { pendingCreationKey, readPendingCreation, type CreationAttempt } from './pendingEventCreation'
 
 export function useMemberEvents(token: string, signal: AbortSignal) {
   const events = ref<AlbumEvent[]>([])
@@ -12,14 +13,40 @@ export function useMemberEvents(token: string, signal: AbortSignal) {
   const confirmation = ref('')
   const recovery = ref<'none' | 'needs-list' | 'needs-choice'>('none')
 
-  let attempt: { id: string; name: string; target?: number } | undefined
+  let attempt: CreationAttempt | undefined
+  let storageKey: string
+  const restored = restoreAttempt()
+
+  async function restoreAttempt() {
+    try {
+      storageKey = await pendingCreationKey(token)
+      if (signal.aborted) return false
+      attempt = readPendingCreation(storageKey)
+      if (attempt) {
+        name.value = attempt.name
+        count.value = attempt.target ?? ''
+        recovery.value = 'needs-list'
+      }
+      return true
+    } catch {
+      formError.value = '无法读取当前标签页的待确认记录，请检查浏览器会话存储后刷新页面。'
+      return false
+    }
+  }
+
+  function forgetAttempt() {
+    sessionStorage.removeItem(storageKey)
+    attempt = undefined
+  }
 
   async function refresh() {
     if (loading.value) return
-    if (recovery.value !== 'none') recovery.value = 'needs-list'
     loading.value = true
     listError.value = ''
     try {
+      await restored
+      if (signal.aborted) return
+      if (recovery.value !== 'none') recovery.value = 'needs-list'
       const result = await listEvents(token, signal)
       if (signal.aborted) return
       events.value = result
@@ -35,7 +62,7 @@ export function useMemberEvents(token: string, signal: AbortSignal) {
   }
 
   async function submit() {
-    if (saving.value || loading.value || listError.value || recovery.value !== 'none') return
+    if (!await restored || signal.aborted || saving.value || loading.value || listError.value || recovery.value !== 'none') return
     formError.value = ''
     confirmation.value = ''
     if (!name.value.trim() || name.value.length > 80) {
@@ -47,15 +74,21 @@ export function useMemberEvents(token: string, signal: AbortSignal) {
       formError.value = '目标选片数须为 1 至 100 之间的整数。'
       return
     }
+    const previous = attempt
+    const sameInput = previous && previous.name.trim() === name.value.trim() && previous.target === target
+    const request = { id: sameInput ? previous.id : crypto.randomUUID(), name: name.value, target }
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(request))
+    } catch {
+      formError.value = '无法保存本次创建记录，请检查浏览器会话存储后重试。'
+      return
+    }
+    attempt = request
     saving.value = true
     try {
-      const displayName = name.value.trim()
-      if (!attempt || attempt.name !== displayName || attempt.target !== target) {
-        attempt = { id: crypto.randomUUID(), name: displayName, target }
-      }
-      const created = await createEvent({ name: name.value, desiredPhotoCount: target }, token, signal, attempt.id)
-      attempt = undefined
+      const created = await createEvent({ name: request.name, desiredPhotoCount: target }, token, signal, request.id)
       if (signal.aborted) return
+      forgetAttempt()
       confirmation.value = '已创建「' + created.name + '」。'
       name.value = ''
       count.value = ''
@@ -63,6 +96,7 @@ export function useMemberEvents(token: string, signal: AbortSignal) {
     } catch (error) {
       if (signal.aborted) return
       if (error instanceof AlbumRequestError && error.status >= 400 && error.status < 500 && error.status !== 408) {
+        if (!sameInput) forgetAttempt()
         formError.value = error.status === 400 ? '请检查活动名称和目标选片数后重试。' : error.message
       } else {
         recovery.value = 'needs-list'
@@ -76,7 +110,7 @@ export function useMemberEvents(token: string, signal: AbortSignal) {
     if (recovery.value !== 'needs-choice') return
     recovery.value = 'none'
     if (found) {
-      attempt = undefined
+      forgetAttempt()
       name.value = ''
       count.value = ''
       confirmation.value = '已确认活动在列表中。'
