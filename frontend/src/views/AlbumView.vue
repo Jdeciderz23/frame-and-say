@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { albumError, listEvents, listPhotos, localTokenKey, type AlbumEvent, type AlbumPhoto } from '../api/album'
 import type { Purpose } from '../api/consent'
 import PhotoThumbnail from '../components/PhotoThumbnail.vue'
+import { selectionTargetEditor } from '../components/selectionTargetEditor'
+import SelectionTarget from '../components/SelectionTarget.vue'
 import PhotoPreference from '../components/PhotoPreference.vue'
 import PhotoConsent from '../components/PhotoConsent.vue'
 import EventShareProgress from '../components/EventShareProgress.vue'
@@ -20,6 +22,17 @@ const photosLoading = ref(false)
 const eventsError = ref('')
 const photosError = ref('')
 const eventsRetry = ref(0)
+const targetEditors = new Map<string, ReturnType<typeof selectionTargetEditor>>()
+let targetSession = new AbortController()
+function editorFor(item: AlbumEvent) {
+  let editor = targetEditors.get(item.id)
+  if (!editor) {
+    editor = selectionTargetEditor(item, token.value, targetSession.signal)
+    targetEditors.set(item.id, editor)
+  }
+  return editor
+}
+
 const progressPurpose = ref<Purpose>('INTERNAL_SHARE')
 let photosRequest: AbortController | undefined
 const eventId = computed(() => typeof route.query.event === 'string' ? route.query.event : '')
@@ -59,6 +72,8 @@ function openPhoto(photo?: AlbumPhoto) {
 
 watch([token, eventsRetry], async ([currentToken], _, cleanup) => {
   const controller = new AbortController()
+  targetSession = controller
+  targetEditors.clear()
   cleanup(() => controller.abort())
   events.value = []
   eventsError.value = ''
@@ -143,6 +158,7 @@ watch([token, event], (_, __, cleanup) => {
 
     <section v-if="event" aria-labelledby="album-heading">
       <h2 id="album-heading" ref="albumHeading" tabindex="-1">{{ event.name }}</h2>
+      <SelectionTarget :key="'target-' + event.id" :event="event" :editor="editorFor(event)" />
       <PhotoUploadForm v-show="!activePhoto" :key="event.id" :event-id="event.id" :token="token"
         :refresh-photos="refreshPhotos" @uploaded="refreshPhotos" />
       <p v-if="photosLoading" role="status">正在加载照片…</p>

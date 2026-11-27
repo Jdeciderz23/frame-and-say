@@ -1,6 +1,7 @@
 export const localTokenKey = 'frame-and-say:local-token'
 
 export interface AlbumEvent {
+  memberRole: 'ORGANIZER' | 'PARTICIPANT'
   id: string
   name: string
   desiredPhotoCount?: number | null
@@ -34,6 +35,15 @@ export function albumError(error: unknown) {
 
 export function eventPath(eventId: string) {
   return `/api/events/${encodeURIComponent(eventId)}`
+}
+
+export async function setSelectionTarget(eventId: string, desiredPhotoCount: number, token: string, signal: AbortSignal) {
+  await albumRequest(`${eventPath(eventId)}/selection-target`, token, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ desiredPhotoCount }),
+    signal,
+  })
 }
 
 export function photoPath(eventId: string, photoId: string) {

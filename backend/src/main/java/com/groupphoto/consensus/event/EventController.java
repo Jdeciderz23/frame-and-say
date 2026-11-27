@@ -8,10 +8,13 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -41,5 +44,12 @@ class EventController {
         return events.list(actor.requireId());
     }
 
+    @PutMapping("/{eventId}/selection-target")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void setTarget(@PathVariable String eventId, @Valid @RequestBody SelectionTarget input) {
+        events.setTarget(eventId, actor.requireId(), input.desiredPhotoCount());
+    }
+
     record CreateEvent(@NotBlank @Size(max = 80) String name, @Min(1) @Max(100) Integer desiredPhotoCount) {}
+    record SelectionTarget(@NotNull @Min(1) @Max(100) Integer desiredPhotoCount) {}
 }
