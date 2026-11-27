@@ -28,6 +28,18 @@ describe('health API contract', () => {
     await expect(getHealth()).rejects.toThrow('请确认后端已启动')
   })
 
+  it('reads the backend again on retry after a proxy failure', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 500 }))
+      .mockResolvedValueOnce(Response.json({ status: 'UP', application: 'group-photo-consensus' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getHealth()).rejects.toThrow('HTTP 500')
+    await expect(getHealth()).resolves.toEqual({ status: 'UP', application: 'group-photo-consensus' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[0][1].signal).not.toBe(fetchMock.mock.calls[1][1].signal)
+  })
+
   it('rejects an unrelated or incomplete JSON response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 'UP' }))))
     await expect(getHealth()).rejects.toThrow('不符合接口约定')
