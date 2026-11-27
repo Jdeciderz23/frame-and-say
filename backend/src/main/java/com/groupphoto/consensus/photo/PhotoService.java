@@ -48,7 +48,7 @@ class PhotoService {
             // Serialize event quota checks and inserts across concurrent uploads.
             membership.lockEvent(eventId);
             membership.requireMember(eventId, actorId);
-            long count = jdbc.sql("SELECT COUNT(*) FROM photos WHERE event_id = :eventId")
+            long count = jdbc.sql("SELECT COUNT(*) FROM photos WHERE event_id = :eventId AND deleted_at IS NULL")
                     .param("eventId", eventId).query(Long.class).single();
             if (count >= MAX_EVENT_PHOTOS) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "The event already has 100 photos");

@@ -75,6 +75,7 @@ public class ConsentService {
                 SELECT v.photo_id, v.id AS photo_version_id, v.roster_confirmed,
                     CASE WHEN s.user_id IS NOT NULL THEN COALESCE(c.decision, 'PENDING') END AS decision
                 FROM photo_versions v
+                JOIN photos p ON p.id = v.photo_id AND p.event_id = v.event_id AND p.deleted_at IS NULL
                 LEFT JOIN photo_subjects s ON s.photo_version_id = v.id AND s.subject_revision = v.subject_revision
                 LEFT JOIN photo_consents c ON c.photo_version_id = s.photo_version_id
                     AND c.subject_revision = s.subject_revision AND c.user_id = s.user_id AND c.purpose = :purpose

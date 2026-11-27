@@ -14,7 +14,7 @@ class PhotoUploaderMigrationTest {
     Path database;
 
     @Test
-    void upgradesMainV3AndRetainsExistingPhotosAndConfirmedSelections() {
+    void upgradesMainV3ToV6AndRetainsExistingPhotosAndConfirmedSelections() {
         String url = "jdbc:h2:file:" + database.resolve("catalog") + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE";
         var dataSource = new DriverManagerDataSource(url, "sa", "");
         var jdbc = new JdbcTemplate(dataSource);
@@ -44,7 +44,12 @@ class PhotoUploaderMigrationTest {
             assertThat(migration.getVersion().getVersion()).isEqualTo("5");
             assertThat(migration.getScript()).isEqualTo("V5__photo_uploaders.sql");
         });
+        assertThat(upgraded.info().current().getVersion().getVersion()).isEqualTo("6");
+        assertThat(upgraded.info().current().getScript()).isEqualTo("V6__photo_deletion_requests.sql");
         assertThat(jdbc.queryForObject("SELECT uploader_id FROM photos WHERE id = 'photo'", String.class)).isNull();
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM photos WHERE id = 'photo' AND deleted_at IS NULL", Integer.class))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM photo_deletion_requests", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("""
                 SELECT photo_version_id FROM confirmed_selection_items WHERE selection_id = 'selection'
                 """, String.class)).isEqualTo("version");

@@ -167,6 +167,91 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/events/{eventId}/photo-deletion-requests:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      operationId: listPhotoDeletionRequests
+      summary: 活动发起人查询待处理和已批准的照片删除申请
+      x-implementation-status: implemented
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: 按申请时间倒序返回本活动记录
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PhotoDeletionRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/events/{eventId}/photos/{photoId}/deletion-request:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - $ref: '#/components/parameters/PhotoId'
+    post:
+      operationId: requestPhotoDeletion
+      summary: 原上传者申请删除活动照片
+      x-implementation-status: implemented
+      description: 原上传者须仍是活动成员。重复申请返回同一记录，处理前照片仍可访问。无上传者记录的旧照片无法申请。
+      responses:
+        '200':
+          $ref: '#/components/responses/PhotoDeletionRecord'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      operationId: getPhotoDeletionRequest
+      summary: 申请者或活动发起人核对处置记录
+      x-implementation-status: implemented
+      responses:
+        '200':
+          $ref: '#/components/responses/PhotoDeletionRecord'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/events/{eventId}/photos/{photoId}/deletion-request/approval:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - $ref: '#/components/parameters/PhotoId'
+    put:
+      operationId: approvePhotoDeletion
+      summary: 活动发起人批准已有的删除申请
+      x-implementation-status: implemented
+      description: 批准后相册与分享进度隐藏该照片，所有历史和当前版本链接失效，包含其版本的确认清单拒绝导出。重复批准返回原记录。
+      responses:
+        '200':
+          $ref: '#/components/responses/PhotoDeletionRecord'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/events/{eventId}/confirmed-selections:
     parameters:
       - $ref: '#/components/parameters/EventId'
@@ -794,6 +879,31 @@ components:
         role:
           type: string
           enum: [ORGANIZER, PARTICIPANT]
+    PhotoDeletionRequest:
+      type: object
+      required: [photoId, eventId, status, requestedBy, requestedAt, processedBy, processedAt]
+      properties:
+        photoId:
+          type: string
+          format: uuid
+        eventId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, APPROVED]
+        requestedBy:
+          type: string
+        requestedAt:
+          type: string
+          format: date-time
+        processedBy:
+          type: string
+          nullable: true
+        processedAt:
+          type: string
+          format: date-time
+          nullable: true
     PhotoVersionEntry:
       type: object
       required: [versionNumber, photo]
@@ -980,6 +1090,12 @@ components:
         instance:
           type: string
   responses:
+    PhotoDeletionRecord:
+      description: 删除申请及处置记录
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PhotoDeletionRequest'
     BadRequest:
       description: 参数、名单或文件信息不合法
       content:
