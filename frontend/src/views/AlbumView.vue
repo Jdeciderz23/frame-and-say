@@ -6,6 +6,8 @@ import type { Purpose } from '../api/consent'
 import { resolveVersion } from '../api/photoVersions'
 import PhotoThumbnail from '../components/PhotoThumbnail.vue'
 import PhotoVersions from '../components/PhotoVersions.vue'
+import { selectionTargetEditor } from '../components/selectionTargetEditor'
+import SelectionTarget from '../components/SelectionTarget.vue'
 import PhotoPreference from '../components/PhotoPreference.vue'
 import PhotoConsent from '../components/PhotoConsent.vue'
 import EventShareProgress from '../components/EventShareProgress.vue'
@@ -23,6 +25,17 @@ const photosLoading = ref(false)
 const eventsError = ref('')
 const photosError = ref('')
 const eventsRetry = ref(0)
+const targetEditors = new Map<string, ReturnType<typeof selectionTargetEditor>>()
+let targetSession = new AbortController()
+function editorFor(item: AlbumEvent) {
+  let editor = targetEditors.get(item.id)
+  if (!editor) {
+    editor = selectionTargetEditor(item, token.value, targetSession.signal)
+    targetEditors.set(item.id, editor)
+  }
+  return editor
+}
+
 const progressPurpose = ref<Purpose>('INTERNAL_SHARE')
 const resolvingVersion = ref(false)
 const versionLinkError = ref('')
@@ -104,6 +117,8 @@ watch([event, token, photosLoading, photosError, photoKey, versionKey, activePho
 
 watch([token, eventsRetry], async ([currentToken], _, cleanup) => {
   const controller = new AbortController()
+  targetSession = controller
+  targetEditors.clear()
   cleanup(() => controller.abort())
   events.value = []
   eventsError.value = ''
@@ -188,6 +203,7 @@ watch([token, event], (_, __, cleanup) => {
 
     <section v-if="event" aria-labelledby="album-heading">
       <h2 id="album-heading" ref="albumHeading" tabindex="-1">{{ event.name }}</h2>
+      <SelectionTarget :key="'target-' + event.id" :event="event" :editor="editorFor(event)" />
       <PhotoUploadForm v-show="!activePhoto" :key="event.id" :event-id="event.id" :token="token"
         :refresh-photos="refreshPhotos" @uploaded="refreshPhotos" />
       <p v-if="photosLoading" role="status">正在加载照片…</p>

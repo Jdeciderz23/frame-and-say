@@ -43,6 +43,13 @@ if (phase === 'create') {
   const members = await (await request(`${root}/members`, { token: participant })).json();
   assert.equal(members.find((member) => member.userId === 'organizer')?.role, 'ORGANIZER');
   assert.equal(members.find((member) => member.userId === 'participant')?.role, 'PARTICIPANT');
+  const desiredPhotoCount = 4;
+  await request(`${root}/selection-target`, {
+    method: 'PUT', token: organizer, body: { desiredPhotoCount }, status: 204,
+  });
+  await request(`${root}/selection-target`, {
+    method: 'PUT', token: participant, body: { desiredPhotoCount: 2 }, status: 403,
+  });
   const otherEvent = await (await request('/api/events', {
     method: 'POST', token: participant, body: { name: 'Separate authorization activity' }, status: 201,
   })).json();
@@ -129,7 +136,7 @@ if (phase === 'create') {
   const latestThumbnail = Buffer.from(await latest.arrayBuffer());
   assert.notDeepEqual(latestThumbnail, originalThumbnail);
   writeFileSync(statePath, JSON.stringify({
-    eventId, photoId: photo.photoId,
+    eventId, desiredPhotoCount, photoId: photo.photoId,
     thumbnails: [
       { url: saved.photo.thumbnailUrl, versionId: saved.photo.photoVersionId, bytes: latestThumbnail.toString('base64') },
       { url: photo.thumbnailUrl, versionId: photo.photoVersionId, bytes: originalThumbnail.toString('base64') },
@@ -137,9 +144,11 @@ if (phase === 'create') {
   }), { mode: 0o600 });
   console.log('Membership, personal consent and separate photo versions verified through the proxy');
 } else {
-  const { eventId, photoId, thumbnails } = JSON.parse(readFileSync(statePath, 'utf8'));
+  const { eventId, desiredPhotoCount = 1, photoId, thumbnails } = JSON.parse(readFileSync(statePath, 'utf8'));
   const events = await (await request('/api/events', { token: participant })).json();
-  assert.ok(events.some((event) => event.id === eventId), 'Event membership must persist across restart');
+  const event = events.find((item) => item.id === eventId);
+  assert.ok(event, 'Event membership must persist across restart');
+  assert.equal(event.desiredPhotoCount, desiredPhotoCount, 'The saved event target must persist across restart');
   const photos = await (await request(`/api/events/${eventId}/photos`, { token: participant })).json();
   assert.equal(photos.find(photo => photo.photoId === photoId)?.photoVersionId, thumbnails[0].versionId);
   const history = await (await request(`/api/events/${eventId}/photos/${photoId}/versions`, { token: participant })).json();
