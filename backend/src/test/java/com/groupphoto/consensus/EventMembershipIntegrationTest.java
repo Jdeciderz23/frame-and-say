@@ -3,6 +3,7 @@ package com.groupphoto.consensus;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -132,6 +133,52 @@ class EventMembershipIntegrationTest {
         Long countBefore = jdbc.queryForObject("SELECT COUNT(*) FROM events", Long.class);
         postEvent(name, desiredPhotoCount).andExpect(status().isBadRequest());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM events", Long.class)).isEqualTo(countBefore);
+    }
+
+    @Test
+    void onlyTheOrganizerOfThisEventCanSetItsTarget() throws Exception {
+        String eventId = createEvent("秋游", 3);
+        String targetPath = "/api/events/" + eventId + "/selection-target";
+        mvc.perform(put(targetPath).contentType(MediaType.APPLICATION_JSON).content("{\"desiredPhotoCount\":4}"))
+                .andExpect(status().isUnauthorized());
+        putTarget(eventId, PARTICIPANT, "{\"desiredPhotoCount\":2}").andExpect(status().isForbidden());
+        addMember(eventId, ORGANIZER, "participant", 204);
+
+        putTarget(eventId, ORGANIZER, "{\"desiredPhotoCount\":4}").andExpect(status().isNoContent());
+        putTarget(eventId, PARTICIPANT, "{\"desiredPhotoCount\":2}").andExpect(status().isForbidden());
+        String item = "$[?(@.id == '" + eventId + "')]";
+        mvc.perform(get("/api/events").header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(jsonPath(item + ".memberRole").value("ORGANIZER"))
+                .andExpect(jsonPath(item + ".desiredPhotoCount").value(4));
+        mvc.perform(get("/api/events").header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(jsonPath(item + ".memberRole").value("PARTICIPANT"))
+                .andExpect(jsonPath(item + ".desiredPhotoCount").value(4));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"desiredPhotoCount\":null}", "{\"desiredPhotoCount\":0}",
+            "{\"desiredPhotoCount\":101}", "{\"desiredPhotoCount\":1.5}"})
+    void rejectsInvalidTargetUpdatesWithoutChangingTheStoredValue(String body) throws Exception {
+        String eventId = createEvent("目标边界", 3);
+        putTarget(eventId, ORGANIZER, body).andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT desired_photo_count FROM events WHERE id = ?", Integer.class, eventId))
+                .isEqualTo(3);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 100})
+    void acceptsEitherLimitAndRepeatedTargetUpdates(int count) throws Exception {
+        String eventId = createEvent("目标边界", 3);
+        String body = json.createObjectNode().put("desiredPhotoCount", count).toString();
+        putTarget(eventId, ORGANIZER, body).andExpect(status().isNoContent());
+        putTarget(eventId, ORGANIZER, body).andExpect(status().isNoContent());
+        assertThat(jdbc.queryForObject("SELECT desired_photo_count FROM events WHERE id = ?", Integer.class, eventId))
+                .isEqualTo(count);
+    }
+
+    private ResultActions putTarget(String eventId, String token, String body) throws Exception {
+        return mvc.perform(put("/api/events/{id}/selection-target", eventId)
+                .header(HttpHeaders.AUTHORIZATION, token).contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
     private ResultActions postEvent(String name, int desiredPhotoCount) throws Exception {

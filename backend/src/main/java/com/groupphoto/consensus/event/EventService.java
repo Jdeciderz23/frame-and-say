@@ -30,12 +30,23 @@ class EventService {
 
     public List<Event> list(String actorId) {
         return jdbc.query("""
-                SELECT e.id, e.name, e.desired_photo_count FROM events e
+                SELECT e.id, e.name, e.desired_photo_count, m.role FROM events e
                 JOIN event_members m ON e.id = m.event_id
                 WHERE m.user_id = ? ORDER BY e.id
                 """, (row, index) -> new Event(row.getString("id"), row.getString("name"),
-                row.getObject("desired_photo_count", Integer.class)), actorId);
+                row.getObject("desired_photo_count", Integer.class), row.getString("role")), actorId);
     }
 
-    public record Event(String id, String name, Integer desiredPhotoCount) {}
+    @Transactional
+    public void setTarget(String eventId, String actorId, int desiredPhotoCount) {
+        members.requireOrganizer(eventId, actorId);
+        jdbc.update("UPDATE events SET desired_photo_count = ? WHERE id = ?", desiredPhotoCount, eventId);
+    }
+
+    public record Event(String id, String name, Integer desiredPhotoCount, String memberRole) {
+        // Only creation uses this constructor. Listing supplies the role of the requesting member.
+        private Event(String id, String name, Integer desiredPhotoCount) {
+            this(id, name, desiredPhotoCount, "ORGANIZER");
+        }
+    }
 }
