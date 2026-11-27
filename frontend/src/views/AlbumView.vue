@@ -3,7 +3,9 @@ import { computed, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { albumError, listEvents, listPhotos, localTokenKey, type AlbumEvent, type AlbumPhoto } from '../api/album'
 import type { Purpose } from '../api/consent'
+import { resolveVersion } from '../api/photoVersions'
 import PhotoThumbnail from '../components/PhotoThumbnail.vue'
+import PhotoVersions from '../components/PhotoVersions.vue'
 import { selectionTargetEditor } from '../components/selectionTargetEditor'
 import SelectionTarget from '../components/SelectionTarget.vue'
 import PhotoPreference from '../components/PhotoPreference.vue'
@@ -34,10 +36,18 @@ function editorFor(item: AlbumEvent) {
 }
 
 const progressPurpose = ref<Purpose>('INTERNAL_SHARE')
+const resolvingVersion = ref(false)
+const versionLinkError = ref('')
+const versionLinkRetry = ref(0)
 let photosRequest: AbortController | undefined
 const eventId = computed(() => typeof route.query.event === 'string' ? route.query.event : '')
 const event = computed(() => events.value.find(item => item.id === eventId.value))
-const activePhoto = computed(() => photos.value.find(item => item.photoVersionId === route.query.photo))
+const photoKey = computed(() => typeof route.query.photo === 'string' ? route.query.photo : '')
+const versionKey = computed(() => typeof route.query.version === 'string' ? route.query.version : '')
+const activePhoto = computed(() => photos.value.find(item =>
+  item.photoId === photoKey.value || (!versionKey.value && item.photoVersionId === photoKey.value)))
+const selectedVersionId = computed(() => versionKey.value
+  || (activePhoto.value && photoKey.value !== activePhoto.value.photoId ? photoKey.value : ''))
 const activePhotoNumber = computed(() => activePhoto.value ? photos.value.indexOf(activePhoto.value) + 1 : 0)
 const photoHeading = useTemplateRef<HTMLHeadingElement>('photoHeading')
 const albumHeading = useTemplateRef<HTMLHeadingElement>('albumHeading')
@@ -67,8 +77,42 @@ function chooseEvent(eventId: string) {
 }
 
 function openPhoto(photo?: AlbumPhoto) {
-  void router.push({ query: { event: eventId.value, photo: photo?.photoVersionId } })
+  void router.push({ query: { event: eventId.value, photo: photo?.photoId, version: photo?.photoVersionId } })
 }
+
+function selectVersion(versionId: string) {
+  if (activePhoto.value) {
+    void router.push({ query: { ...route.query, photo: activePhoto.value.photoId, version: versionId } })
+  }
+}
+
+function updatePhotoVersion(photo: AlbumPhoto) {
+  if (activePhoto.value?.photoId === photo.photoId) {
+    photos.value = photos.value.map(item => item.photoId === photo.photoId ? photo : item)
+  }
+}
+
+watch([event, token, photosLoading, photosError, photoKey, versionKey, activePhoto, versionLinkRetry],
+  async ([currentEvent, currentToken, loading, loadError, id, explicitVersion, matched], _, cleanup) => {
+    const controller = new AbortController()
+    cleanup(() => controller.abort())
+    resolvingVersion.value = false
+    versionLinkError.value = ''
+    if (!currentEvent || !currentToken || loading || loadError || !id || explicitVersion || matched?.photoId === id) return
+
+    // Older album links put a version ID in "photo". Resolve historical IDs within this event.
+    resolvingVersion.value = true
+    try {
+      const photo = matched ?? (await resolveVersion(currentEvent.id, id, currentToken, controller.signal)).photo
+      if (!controller.signal.aborted) {
+        await router.replace({ query: { ...route.query, photo: photo.photoId, version: id } })
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) versionLinkError.value = albumError(error)
+    } finally {
+      if (!controller.signal.aborted) resolvingVersion.value = false
+    }
+  }, { immediate: true })
 
 watch([token, eventsRetry], async ([currentToken], _, cleanup) => {
   const controller = new AbortController()
@@ -167,13 +211,22 @@ watch([token, event], (_, __, cleanup) => {
         <button class="button secondary" type="button" @click="refreshPhotos">重试照片列表</button>
       </div>
       <template v-else>
-        <p v-if="route.query.photo && !activePhoto" role="status">原照片版本已不可用，请从列表重新打开。</p>
-        <section v-if="activePhoto" :key="activePhoto.photoVersionId" class="photo-detail" aria-labelledby="photo-heading">
+        <p v-if="resolvingVersion && !activePhoto" role="status">正在定位照片版本…</p>
+        <div v-if="versionLinkError && !activePhoto">
+          <p class="error-message" role="alert">{{ versionLinkError }}</p>
+          <button class="button secondary" type="button" @click="versionLinkRetry++">重试打开照片</button>
+        </div>
+        <p v-else-if="photoKey && !activePhoto && !resolvingVersion" role="status">链接中的照片版本不可用。</p>
+        <section v-if="activePhoto" :key="activePhoto.photoId" class="photo-detail" aria-labelledby="photo-heading">
           <button type="button" class="button secondary" @click="openPhoto()">返回照片列表</button>
           <h3 id="photo-heading" ref="photoHeading" tabindex="-1">照片 {{ activePhotoNumber }}</h3>
-          <PhotoThumbnail :event-id="event.id" :photo="activePhoto" :token="token" :alt="`照片 ${activePhotoNumber} 缩略图`" />
-          <PhotoPreference :event-id="event.id" :photo="activePhoto" :token="token" @refresh="refreshPhotos" />
-          <PhotoConsent :event-id="event.id" :photo="activePhoto" :token="token" @refresh="refreshPhotos" />
+          <PhotoVersions :event-id="event.id" :photo="activePhoto" :token="token" :selected-version-id="selectedVersionId"
+            :alt="`照片 ${activePhotoNumber} 缩略图`" @current-version="updatePhotoVersion" @select-version="selectVersion">
+            <template #default="{ photo }">
+              <PhotoPreference :key="`preference-${photo.photoVersionId}`" :event-id="event.id" :photo="photo" :token="token" @refresh="refreshPhotos" />
+              <PhotoConsent :key="`consent-${photo.photoVersionId}`" :event-id="event.id" :photo="photo" :token="token" @refresh="refreshPhotos" />
+            </template>
+          </PhotoVersions>
         </section>
         <template v-else>
           <EventShareProgress v-model:purpose="progressPurpose" :key="event.id"

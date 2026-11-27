@@ -19,16 +19,39 @@ public class PhotoCatalog {
     public record Version(String photoId, String photoVersionId, String eventId, int versionNumber,
                           long subjectRevision, boolean rosterConfirmed, String mediaType) {}
 
+    record PhotoOwner(String uploaderId) {}
+
     private final JdbcClient jdbc;
 
     PhotoCatalog(JdbcClient jdbc) {
         this.jdbc = jdbc;
     }
 
+    PhotoOwner requirePhotoOwner(String eventId, String photoId) {
+        return jdbc.sql("SELECT uploader_id FROM photos WHERE event_id = :eventId AND id = :photoId")
+                .param("eventId", eventId).param("photoId", photoId).query(PhotoOwner.class).optional()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Photo not found"));
+    }
+
+    List<Version> versions(String eventId, String photoId) {
+        return jdbc.sql(VERSION_COLUMNS + """
+                WHERE event_id = :eventId AND photo_id = :photoId
+                ORDER BY version_number DESC
+                """).param("eventId", eventId).param("photoId", photoId).query(Version.class).list();
+    }
+
     public Version requireVersion(String eventId, String photoId, String photoVersionId) {
         return jdbc.sql(VERSION_COLUMNS + """
                 WHERE event_id = :eventId AND photo_id = :photoId AND id = :versionId
                 """).param("eventId", eventId).param("photoId", photoId).param("versionId", photoVersionId)
+                .query(Version.class).optional()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Photo version not found"));
+    }
+
+    Version resolveVersion(String eventId, String photoVersionId) {
+        return jdbc.sql(VERSION_COLUMNS + """
+                WHERE event_id = :eventId AND id = :versionId
+                """).param("eventId", eventId).param("versionId", photoVersionId)
                 .query(Version.class).optional()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Photo version not found"));
     }
