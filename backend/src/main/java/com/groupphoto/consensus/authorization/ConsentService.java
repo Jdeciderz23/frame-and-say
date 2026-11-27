@@ -6,10 +6,15 @@ import com.groupphoto.consensus.authorization.Publications.Purpose;
 import com.groupphoto.consensus.authorization.Publications.Status;
 import com.groupphoto.consensus.membership.EventMembership;
 import com.groupphoto.consensus.photo.PhotoCatalog;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -26,6 +31,8 @@ public class ConsentService {
     }
 
     record MyConsent(String photoVersionId, long subjectRevision, Purpose purpose, Status decision, boolean canDecide) {}
+    record PhotoProgress(String photoId, String photoVersionId, boolean eligible) {}
+    private record VersionConsent(String photoId, String photoVersionId, boolean rosterConfirmed, Status decision) {}
 
     MyConsent read(String eventId, String photoId, String versionId, String actorId, Purpose purpose) {
         membership.requireMember(eventId, actorId);
@@ -62,19 +69,64 @@ public class ConsentService {
                 .update();
     }
 
+    List<PhotoProgress> progress(String eventId, String actorId, Purpose purpose) {
+        membership.requireOrganizer(eventId, actorId);
+        var rows = jdbc.sql("""
+                SELECT v.photo_id, v.id AS photo_version_id, v.roster_confirmed,
+                    CASE WHEN s.user_id IS NOT NULL THEN COALESCE(c.decision, 'PENDING') END AS decision
+                FROM photo_versions v
+                LEFT JOIN photo_subjects s ON s.photo_version_id = v.id AND s.subject_revision = v.subject_revision
+                LEFT JOIN photo_consents c ON c.photo_version_id = s.photo_version_id
+                    AND c.subject_revision = s.subject_revision AND c.user_id = s.user_id AND c.purpose = :purpose
+                WHERE v.event_id = :eventId AND NOT EXISTS (
+                    SELECT 1 FROM photo_versions newer
+                    WHERE newer.photo_id = v.photo_id AND newer.version_number > v.version_number
+                )
+                ORDER BY v.photo_id
+                """).param("eventId", eventId).param("purpose", purpose.name())
+                .query((row, index) -> {
+                    String decision = row.getString("decision");
+                    return new VersionConsent(row.getString("photo_id"), row.getString("photo_version_id"),
+                            row.getBoolean("roster_confirmed"), decision == null ? null : Status.valueOf(decision));
+                }).list();
+
+        return rows.stream()
+                .collect(Collectors.groupingBy(VersionConsent::photoVersionId, LinkedHashMap::new, Collectors.toList()))
+                .values().stream().map(versionRows -> {
+                    var version = versionRows.getFirst();
+                    var required = versionRows.stream().map(VersionConsent::decision).filter(Objects::nonNull).toList();
+                    boolean eligible = Publications.evaluate(version.rosterConfirmed(), required).eligible();
+                    return new PhotoProgress(version.photoId(), version.photoVersionId(), eligible);
+                }).toList();
+    }
+
     // This input is evaluated against the latest revision for the requested purpose.
-    // A later delivery step must check again before handing out a file.
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public Eligibility evaluateForRecommendation(String eventId, String photoId, String versionId,
                                                  String actorId, Purpose purpose) {
         membership.requireOrganizer(eventId, actorId);
         var version = photos.lockCurrentVersion(eventId, photoId, versionId);
+        return evaluate(version, purpose);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public PhotoCatalog.Version requireEligibleForDelivery(String eventId, String photoId, String versionId,
+                                                           String actorId, Purpose purpose, long reviewedRevision) {
+        membership.requireOrganizer(eventId, actorId);
+        var version = photos.lockCurrentVersion(eventId, photoId, versionId);
+        if (version.subjectRevision() != reviewedRevision || !evaluate(version, purpose).eligible()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "The confirmed selection changed; review it again");
+        }
+        return version;
+    }
+
+    private Eligibility evaluate(PhotoCatalog.Version version, Purpose purpose) {
         var required = jdbc.sql("""
                 SELECT c.decision FROM photo_subjects s
                 LEFT JOIN photo_consents c ON c.photo_version_id = s.photo_version_id
                     AND c.subject_revision = s.subject_revision AND c.user_id = s.user_id AND c.purpose = :purpose
                 WHERE s.photo_version_id = :versionId AND s.subject_revision = :revision
-                """).param("purpose", purpose.name()).param("versionId", versionId)
+                """).param("purpose", purpose.name()).param("versionId", version.photoVersionId())
                 .param("revision", version.subjectRevision())
                 .query((result, row) -> {
                     String decision = result.getString("decision");

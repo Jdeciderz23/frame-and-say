@@ -2,6 +2,7 @@ package com.groupphoto.consensus.photo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -21,7 +22,9 @@ import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import javax.imageio.ImageIO;
@@ -307,6 +310,82 @@ class PhotoWorkflowIntegrationTest {
         assertThat(jdbc.queryForObject("""
                 SELECT decision FROM photo_consents WHERE photo_version_id = ? AND subject_revision = 1
                 """, String.class, versionId)).isEqualTo("DENY");
+    }
+
+    @Test
+    void replacesOnlyTheCurrentMembersRatingAndPreservesZero() throws Exception {
+        String eventId = createEvent("Rating", true);
+        JsonNode uploaded = upload(eventId, "png");
+        String photoId = uploaded.required("photoId").asText();
+        String versionId = uploaded.required("photoVersionId").asText();
+        String path = photosAt(eventId) + "/" + photoId + "/preferences/me";
+
+        rate(path, versionId, ORGANIZER, -1);
+        mvc.perform(get(path).param("photoVersionId", versionId).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.value").value(nullValue()));
+        rate(path, versionId, PARTICIPANT, 0);
+        mvc.perform(get(path).param("photoVersionId", versionId).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.value").value(0));
+        rate(path, versionId, PARTICIPANT, 1);
+        mvc.perform(get(path).param("photoVersionId", versionId).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.value").value(1));
+        mvc.perform(get(path).param("photoVersionId", versionId).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.value").value(-1));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM photo_preferences WHERE photo_version_id = ?",
+                Long.class, versionId)).isEqualTo(2L);
+    }
+
+    @Test
+    void reportsOnlyOrganizerEligibilityForTheSelectedPurposeAndCurrentRoster() throws Exception {
+        String eventId = createEvent("Share progress", true);
+        String progress = "/api/events/" + eventId + "/consent-progress";
+        Map<String, Boolean> expected = new HashMap<>();
+        for (String decision : new String[]{"ALLOW", "PENDING", "DENY"}) {
+            JsonNode photo = upload(eventId, "png");
+            String photoId = photo.required("photoId").asText();
+            String versionId = photo.required("photoVersionId").asText();
+            String path = photosAt(eventId) + "/" + photoId;
+            setSubjects(path + "/versions/" + versionId + "/subjects", ORGANIZER, 0, "participant")
+                    .andExpect(status().isOk());
+            if (!"PENDING".equals(decision)) {
+                setConsent(path + "/consents/me", PARTICIPANT, versionId, 1, "INTERNAL_SHARE", decision)
+                        .andExpect(status().isNoContent());
+            }
+            mvc.perform(get(path + "/consents/me").param("photoVersionId", versionId).param("purpose", "INTERNAL_SHARE")
+                            .header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.decision").value(decision));
+            expected.put(versionId, "ALLOW".equals(decision));
+        }
+
+        mvc.perform(get(progress).param("purpose", "INTERNAL_SHARE").header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isForbidden());
+        assertThat(shareProgress(progress, "INTERNAL_SHARE")).containsExactlyInAnyOrderEntriesOf(expected);
+        assertThat(shareProgress(progress, "PUBLIC_POST").values()).hasSize(3).containsOnly(false);
+
+        String allowedVersion = expected.entrySet().stream().filter(Map.Entry::getValue).findFirst().orElseThrow().getKey();
+        String allowedPhoto = jdbc.queryForObject("SELECT photo_id FROM photo_versions WHERE id = ?", String.class, allowedVersion);
+        String subjects = photosAt(eventId) + "/" + allowedPhoto + "/versions/" + allowedVersion + "/subjects";
+        setSubjects(subjects, ORGANIZER, 1, "participant", "organizer").andExpect(status().isOk());
+        assertThat(shareProgress(progress, "INTERNAL_SHARE").values()).hasSize(3).containsOnly(false);
+    }
+
+    private Map<String, Boolean> shareProgress(String path, String purpose) throws Exception {
+        String body = mvc.perform(get(path).param("purpose", purpose).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var result = new HashMap<String, Boolean>();
+        for (var row : json.readTree(body)) {
+            assertThat(row.size()).isEqualTo(3);
+            assertThat(row.required("photoId").asText()).isNotBlank();
+            result.put(row.required("photoVersionId").asText(), row.required("eligible").asBoolean());
+        }
+        return result;
+    }
+
+    private void rate(String path, String versionId, String token, int value) throws Exception {
+        var body = json.createObjectNode().put("photoVersionId", versionId).put("value", value);
+        mvc.perform(put(path).header(HttpHeaders.AUTHORIZATION, token)
+                        .contentType(MediaType.APPLICATION_JSON).content(body.toString()))
+                .andExpect(status().isNoContent());
     }
 
     private void assertEligibility(String eventId, String photoId, String versionId, Purpose purpose, Reason result) {
