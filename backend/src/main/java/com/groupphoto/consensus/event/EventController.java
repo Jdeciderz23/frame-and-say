@@ -1,6 +1,7 @@
 package com.groupphoto.consensus.event;
 
 import java.util.List;
+import java.util.UUID;
 
 import com.groupphoto.consensus.identity.CurrentActor;
 import jakarta.validation.Valid;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,8 +34,9 @@ class EventController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public EventService.Event create(@Valid @RequestBody CreateEvent input) {
-        return events.create(actor.requireId(), input.name(), input.desiredPhotoCount());
+    public EventService.Event create(@Valid @RequestBody CreateEvent input,
+                                     @RequestHeader(name = "Idempotency-Key", required = false) UUID requestId) {
+        return events.create(actor.requireId(), input.name(), input.desiredPhotoCount(), requestId);
     }
 
     @GetMapping
