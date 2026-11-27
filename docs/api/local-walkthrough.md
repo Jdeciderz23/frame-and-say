@@ -88,3 +88,9 @@ node --env-file=.env scripts/smoke-reviewed-export.mjs create "$EXPORT_STATE"
 Windows 可在 `backend` 目录用 `./mvnw.cmd -B '-Dtest=PhotoImageProcessorTest,LocalPhotoStorageTest,PhotoWorkflowIntegrationTest' test`。两种方式都需要 Java 21。
 这组测试用内存合成的 JPEG/PNG 和 JUnit 自动清理的临时目录，验证内容解码、文件/像素边界、文件名与存储键隔离、受保护缩略图及拒绝上传无残留。
 仅验证 H2 和本地文件适配器；Docker/MinIO、代理限额及持久化需独立联调。当前实测环境和结果见 [私有图片存储与输入校验记录](../verification-log.md#2026-11-24-私有图片存储与输入校验)。
+
+## 调整活动选片目标
+
+用发起人 A 的本机身份打开活动相册，选择已有活动。在「调整目标」中填写 1–100 的整数，点击「保存目标」。活动原先没有配置目标时也可在此首次设置。这个范围与活动创建及推荐接口一致，可在上传完整个相册前设定目标。
+
+验收可使用五张合成照片和初始目标 3 张。A 改为 4 张后重新打开相册，当前目标应为 4 张。让已加入的普通成员 B 打开同一活动，页面应只显示当前目标。用 B 的身份向 `PUT /api/events/{eventId}/selection-target` 提交 `{"desiredPhotoCount":2}` 会返回 403，A 与 B 重新读取仍为 4 张。A 输入 0 或 101 时，页面提示有效范围，原值保留。
