@@ -70,4 +70,4 @@ Invoke-RestMethod http://127.0.0.1:8080/api/health
 Invoke-RestMethod http://127.0.0.1:8080/actuator/health/readiness
 ```
 
-实际执行环境、命令与结果记录在[工程验证记录](../验证记录.md)。
+实际执行环境、命令与结果记录在[工程验证记录](../verification-log.md)。

@@ -917,7 +917,7 @@ flowchart TD
 
 正式系统需具有至少一个外部集成点，本项目拟通过第三方登录完成该要求。外部服务负责提供可验证的身份，系统负责映射内部账号，再以内部成员关系判断活动权限。外部显示名或邮箱不能直接作为活动发起人资格。
 
-外部身份提供方、账号绑定与最小数据范围由 D-06 确认，登录方式、有效期和退出机制由 D-02 确认；[身份与邀请提案](api/identity-invitations-proposal.md)是候选技术方案。现有联调用身份只供隔离的开发测试环境使用，不计作正式外部登录已经交付。外部服务拒绝或失败时，不建立有效登录，不绕过权限进入活动。
+外部身份提供方、账号绑定与最小数据范围由 D-06 确认，登录方式、有效期和退出机制由 D-02 确认；[身份与邀请提案](api/identity-invitations.md)是候选技术方案。现有联调用身份只供隔离的开发测试环境使用，不计作正式外部登录已经交付。外部服务拒绝或失败时，不建立有效登录，不绕过权限进入活动。
 
 ### 6.2 输入、文件与数据约束
 
@@ -988,7 +988,7 @@ MySQL 持久化联调用于验证数据保存及重启后的读取，H2 用于�
 | D-03 | 名单纠错入口、汇总粒度、少人数推断风险及撤回时限 | 郭炫君、王子轩；[#7](https://github.com/Jdeciderz23/frame-and-say/issues/7)、[#30](https://github.com/Jdeciderz23/frame-and-say/issues/30)、[#33](https://github.com/Jdeciderz23/frame-and-say/issues/33) | 沿用发起人确认、本人决定和汇总不列拒绝者；不以旧许可绕过最新复核 |
 | D-04 | 未评分如何计入效用、三档评分、个人效用与并列规则，含贪心口径 | 唐独彪；[#12](https://github.com/Jdeciderz23/frame-and-say/issues/12)、[推荐契约](api/recommendation-dto.md) | 3.4 仅列当前原型；区分未评分与 0，保留固定样例及规则版本 |
 | D-05 | 新版写入权限、删除权限、保留期、历史资源、未来容量阈值及删除计数规则 | 周力扬、靳岱泽；[#39](https://github.com/Jdeciderz23/frame-and-say/issues/39)、[#43](https://github.com/Jdeciderz23/frame-and-say/issues/43) | 当前单活动上传上限 100 张继续生效；沿用受保护访问及新版本不继承许可，删除后旧清单整单失效，不暗定保留天数或删除后如何释放名额 |
-| D-06 | 外部身份提供方、账号绑定与最小数据范围 | 郭炫君；[#21](https://github.com/Jdeciderz23/frame-and-say/issues/21)、[身份方案](api/identity-invitations-proposal.md) | 保留外部身份验证和内部账号映射目标，联调凭据只用于开发测试；与 D-02 的登录和会话方案共同确认 |
+| D-06 | 外部身份提供方、账号绑定与最小数据范围 | 郭炫君；[#21](https://github.com/Jdeciderz23/frame-and-say/issues/21)、[身份方案](api/identity-invitations.md) | 保留外部身份验证和内部账号映射目标，联调凭据只用于开发测试；与 D-02 的登录和会话方案共同确认 |
 | D-07 | 纯算法阈值与测试环境、端到端响应目标、移动设备验证范围 | 唐独彪、王子轩；[#45](https://github.com/Jdeciderz23/frame-and-say/issues/45)、[#46](https://github.com/Jdeciderz23/frame-and-say/issues/46) | 采用第 5 节候选测试办法，保留实际结果，不将候选值写成已达成指标 |
 | D-08 | 调研证据适用性、各模块签认及正式基线发布 | 靳岱泽统筹、各模块负责人核对；[#6](https://github.com/Jdeciderz23/frame-and-say/issues/6)、[#19](https://github.com/Jdeciderz23/frame-and-say/issues/19) | 沿用调研报告的来源与适用范围，未取得的访谈反馈不写成已取得；评审记录与发布另行留痕 |
 | D-09 | 账号恢复及处置记录保留方式 | 郭炫君；[#44](https://github.com/Jdeciderz23/frame-and-say/issues/44) | 明确暂停后拒绝访问和管理员不代签，不扩展成任意查看活动内容 |
