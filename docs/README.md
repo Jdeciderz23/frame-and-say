@@ -8,7 +8,7 @@
 | [需求规格](11-srs.md) · [用例图](12-use-case-diagram.md) | 核对角色、功能、质量约束和验收条件 |
 | [需求追溯矩阵](13-traceability.md) | 从需求或用例定位故事 Issue 和负责人 |
 | [调研报告](10-research-report.md) · [调研计划](01-research-plan.md) | 查阅公开证据、适用人群和待验证的问题 |
-| [用户故事](09-user-stories.md) · [角色与用例](02-users-and-use-cases.md) | 理解活动参与者的使用场景 |
+| [用户故事清单](09-user-stories.md) · [角色与用例](02-users-and-use-cases.md) | 24 条功能用户故事与 4 条非功能需求，逐条列出用户场景、Given/When/Then 验收标准、后续用例及负责人 |
 | [技术架构](03-architecture.md) · [模块维护者](04-team-responsibilities.md) | 查阅模块、数据归属与接口依赖 |
 | [API 契约](api/openapi.yaml) · [本地联调](api/local-walkthrough.md) | 区分现有接口与规划项，以合成数据验证行为 |
 | [后端基础验证](api/backend-baseline.md) · [成员与授权边界](api/authorization-boundaries.md) | 核对健康探针、数据库配置、成员权限与授权修订 |
