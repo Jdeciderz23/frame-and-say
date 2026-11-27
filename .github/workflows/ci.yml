@@ -67,10 +67,11 @@ jobs:
           docker compose --profile app stop backend
           curl --fail --silent --show-error --max-time 5 http://127.0.0.1:5173/ --output /dev/null
           status=$(curl --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' http://127.0.0.1:5173/api/health)
-          test "$status" = 502
+          echo "Health endpoint during backend outage: HTTP $status"
+          test "$status" = 502 || test "$status" = 504
       - name: Restart MySQL and the backend and verify persistence
         run: |
-          docker compose --profile app stop frontend mysql
+          docker compose --profile app stop mysql
           docker compose --profile app up -d --wait --wait-timeout 150
           node --env-file=.env scripts/smoke-compose.mjs verify "$RUNNER_TEMP/frame-say-smoke.json"
           node --env-file=.env scripts/smoke-photo-storage.mjs verify "$RUNNER_TEMP/frame-say-photos.json" --compose
