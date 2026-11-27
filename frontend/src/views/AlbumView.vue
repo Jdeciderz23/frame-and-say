@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { albumError, listEvents, listPhotos, type AlbumEvent, type AlbumPhoto } from '../api/album'
+import { albumError, listEvents, listPhotos, localTokenKey, type AlbumEvent, type AlbumPhoto } from '../api/album'
 import type { Purpose } from '../api/consent'
 import PhotoThumbnail from '../components/PhotoThumbnail.vue'
 import { selectionTargetEditor } from '../components/selectionTargetEditor'
@@ -13,8 +13,7 @@ import PhotoUploadForm from '../components/PhotoUploadForm.vue'
 
 const route = useRoute()
 const router = useRouter()
-const storageKey = 'frame-and-say:local-token'
-const token = ref(sessionStorage.getItem(storageKey) ?? '')
+const token = ref(sessionStorage.getItem(localTokenKey) ?? '')
 const enteredToken = ref('')
 const events = ref<AlbumEvent[]>([])
 const photos = ref<AlbumPhoto[]>([])
@@ -51,14 +50,14 @@ watch(activePhoto, (photo, previousPhoto) => {
 function connect() {
   const nextToken = enteredToken.value.trim()
   if (!nextToken) return
-  sessionStorage.setItem(storageKey, nextToken)
+  sessionStorage.setItem(localTokenKey, nextToken)
   token.value = nextToken
   enteredToken.value = ''
   eventsRetry.value++
 }
 
 function disconnect() {
-  sessionStorage.removeItem(storageKey)
+  sessionStorage.removeItem(localTokenKey)
   token.value = ''
   enteredToken.value = ''
 }

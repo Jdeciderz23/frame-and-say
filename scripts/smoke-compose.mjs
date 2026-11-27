@@ -12,8 +12,9 @@ const organizer = process.env.APP_BOOTSTRAP_ORGANIZER_TOKEN;
 const participant = process.env.APP_BOOTSTRAP_PARTICIPANT_TOKEN;
 assert.ok(organizer && participant && organizer !== participant, 'Two distinct local demo tokens are required');
 
-async function request(path, { method = 'GET', token, body, status = 200, base = proxy } = {}) {
+async function request(path, { method = 'GET', token, body, status = 200, base = proxy, requestKey } = {}) {
   const headers = {};
+  if (requestKey) headers['Idempotency-Key'] = requestKey;
   if (token) headers.Authorization = `Bearer ${token}`;
   if (body && !(body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
@@ -30,10 +31,11 @@ assert.equal((await ready.json()).status, 'UP');
 
 if (phase === 'create') {
   await request('/api/events', { status: 401 });
-  const eventResponse = await request('/api/events', {
-    method: 'POST', token: organizer, body: { name: 'Compose smoke test', desiredPhotoCount: 1 }, status: 201,
-  });
-  const { id: eventId } = await eventResponse.json();
+  const creation = {
+    method: 'POST', token: organizer, requestKey: crypto.randomUUID(), body: { name: 'Compose smoke test', desiredPhotoCount: 1 }, status: 201,
+  };
+  const { id: eventId } = await (await request('/api/events', creation)).json();
+  assert.equal((await (await request('/api/events', creation)).json()).id, eventId);
   assert.ok(eventId);
   const root = `/api/events/${eventId}`;
   await request(`${root}/members`, { token: participant, status: 403 });

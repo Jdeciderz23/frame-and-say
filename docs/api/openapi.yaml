@@ -34,6 +34,12 @@ paths:
   /api/events:
     post:
       operationId: createEvent
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema: { type: string, format: uuid }
+          description: 同一成员以同一标识和相同输入重试时返回原创建结果。省略标识时每次创建独立活动。
       summary: 创建活动并将调用者设为该活动的发起人
       x-implementation-status: implemented
       x-task-id: W2-01
@@ -54,6 +60,8 @@ paths:
                 desiredPhotoCount:
                   $ref: '#/components/schemas/PhotoCount'
       responses:
+        '409':
+          description: 此成员已用相同请求标识提交不同名称或选片目标
         '201':
           description: 活动及其发起人成员关系创建成功
           content:
