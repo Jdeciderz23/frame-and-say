@@ -62,6 +62,8 @@ try {
 
 前端的 `build` 包含类型检查。后端以 `BUILD SUCCESS` 为通过，生成 `backend/target/group-photo-consensus.jar`。
 
+验证连接失败时，完成打包后在两个 PowerShell 窗口分别运行 `pnpm.cmd --dir frontend dev` 和 `node scripts/dev.mjs --backend-only`。只停止第二个窗口里的后端，前端页面可以继续打开。恢复步骤见[连接恢复验收](api/local-walkthrough.md#验证连接失败与恢复)。
+
 ## 数据库与图片存储
 
 | 环境 | 配置和实测范围 |
