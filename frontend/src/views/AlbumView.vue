@@ -11,6 +11,7 @@ import SelectionTarget from '../components/SelectionTarget.vue'
 import PhotoPreference from '../components/PhotoPreference.vue'
 import PhotoConsent from '../components/PhotoConsent.vue'
 import EventShareProgress from '../components/EventShareProgress.vue'
+import ConfirmedSelections from '../components/ConfirmedSelections.vue'
 import PhotoUploadForm from '../components/PhotoUploadForm.vue'
 
 const route = useRoute()
@@ -36,6 +37,7 @@ function editorFor(item: AlbumEvent) {
 }
 
 const progressPurpose = ref<Purpose>('INTERNAL_SHARE')
+const selectionsRevision = ref(0)
 const resolvingVersion = ref(false)
 const versionLinkError = ref('')
 const versionLinkRetry = ref(0)
@@ -229,8 +231,11 @@ watch([token, event], (_, __, cleanup) => {
           </PhotoVersions>
         </section>
         <template v-else>
-          <EventShareProgress v-model:purpose="progressPurpose" :key="event.id"
-            :event-id="event.id" :photos="photos" :token="token" @refresh="refreshPhotos" />
+          <EventShareProgress v-if="event.memberRole === 'ORGANIZER'" v-model:purpose="progressPurpose" :key="event.id"
+            :event-id="event.id" :photos="photos" :token="token" @refresh="refreshPhotos"
+            @selections-changed="selectionsRevision++" />
+          <ConfirmedSelections :event-id="event.id" :token="token" :photos="photos" :revision="selectionsRevision"
+            :organizer="event.memberRole === 'ORGANIZER'" />
           <p v-if="!photos.length">这个活动还没有照片。</p>
           <ul v-else class="photo-grid">
             <li v-for="(photo, index) in photos" :key="photo.photoVersionId">

@@ -33,6 +33,11 @@ class PhotoExportController {
         this.exports = exports;
     }
 
+    @GetMapping
+    List<PhotoExportService.Selection> list(@PathVariable String eventId) {
+        return exports.listForReview(eventId, actor.requireId());
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     PhotoExportService.Selection confirm(@PathVariable String eventId, @Valid @RequestBody ConfirmSelection request) {
