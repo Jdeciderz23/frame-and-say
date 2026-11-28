@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { readPreference, savePreference } from './preference'
 
-const photo = { photoId: 'photo', photoVersionId: 'version', thumbnailAvailable: true }
+const photo = { photoId: 'photo', photoVersionId: 'version', thumbnailAvailable: true, subjectRevision: 1 }
 const token = 'participant-token'
 const signal = new AbortController().signal
 

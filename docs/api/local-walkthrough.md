@@ -91,6 +91,8 @@ rm "$SMOKE_STATE"
 
 发起人核对所需照片后，向 `POST /api/events/{eventId}/confirmed-selections` 提交用途和有序条目。每条包含 `photoId`、`photoVersionId`、`subjectRevision`。保存成功后，用同一身份调用 `GET /api/events/{eventId}/confirmed-selections/{selectionId}/export` 下载 ZIP。实际文件按版本 ID 命名，每个条目都是原图。导出直接读取服务端清单，已有授权只适用于对应的用途。
 
+在活动相册中选择分享用途，勾选符合条件的版本后点击「确认最终清单」。展开「已确认清单」可核对用途、版本和名单修订，点击版本链接可打开确认时的照片。刷新页面或更换成员身份后，相册通过 `GET /api/events/{eventId}/confirmed-selections` 重新读取清单。发起人可以核对原始条目，成员只能核对该用途下仍获准的条目。为已选照片上传新版后，原清单导出返回 409；核对新版名单与许可后，发起人可以另行确认一份新清单。
+
 在专用合成活动环境中可运行以下冒烟检查。它创建两张已许可照片和一张清单外的照片，解压比较首次 ZIP 的原图，再撤回第二张照片的群内许可并确认重新下载返回 `409`。
 
 ```sh

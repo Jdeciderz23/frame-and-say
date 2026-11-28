@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { listPhotos, photoUploadError, readThumbnail, setSelectionTarget, uploadPhoto } from './album'
 
-const photo = { photoId: 'photo', photoVersionId: 'version', thumbnailAvailable: true }
+const photo = { photoId: 'photo', photoVersionId: 'version', thumbnailAvailable: true, subjectRevision: 1 }
 
 afterEach(() => vi.unstubAllGlobals())
 

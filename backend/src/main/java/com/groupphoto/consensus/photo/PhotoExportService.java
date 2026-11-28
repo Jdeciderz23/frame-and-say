@@ -7,8 +7,11 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -20,6 +23,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -28,6 +33,8 @@ class PhotoExportService {
     record Item(UUID photoId, UUID photoVersionId, long subjectRevision) {}
 
     record Selection(UUID selectionId, String eventId, Purpose purpose, List<Item> items) {}
+
+    private record SavedItem(UUID selectionId, Purpose purpose, Item item) {}
 
     record PreparedArchive(Path path) implements AutoCloseable {
         void copyTo(OutputStream output) throws IOException {
@@ -54,6 +61,34 @@ class PhotoExportService {
         this.jdbc = jdbc;
         this.transactions = new TransactionTemplate(manager);
         this.transactions.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public List<Selection> listForReview(String eventId, String actor) {
+        membership.requireMember(eventId, actor);
+        boolean organizer = membership.isOrganizer(eventId, actor);
+        var rows = jdbc.sql("""
+                SELECT s.id, s.purpose, i.photo_id, i.photo_version_id, i.subject_revision
+                FROM confirmed_selections s JOIN confirmed_selection_items i ON i.selection_id = s.id
+                WHERE s.event_id = ? ORDER BY s.id, i.sort_order
+                """).param(eventId).query((row, index) -> new SavedItem(UUID.fromString(row.getString("id")),
+                        Purpose.valueOf(row.getString("purpose")), new Item(UUID.fromString(row.getString("photo_id")),
+                        UUID.fromString(row.getString("photo_version_id")), row.getLong("subject_revision")))).list();
+        var selections = new LinkedHashMap<UUID, Selection>();
+        var eligible = new EnumMap<Purpose, Map<String, Long>>(Purpose.class);
+        for (SavedItem row : rows) {
+            if (!organizer) {
+                var revisions = eligible.computeIfAbsent(row.purpose(), p -> consents.eligibleRevisions(eventId, actor, p));
+                Long revision = revisions.get(row.item().photoVersionId().toString());
+                if (revision == null || revision != row.item().subjectRevision()) {
+                    continue;
+                }
+            }
+            var selection = selections.computeIfAbsent(row.selectionId(),
+                    id -> new Selection(id, eventId, row.purpose(), new ArrayList<>()));
+            selection.items().add(row.item());
+        }
+        return List.copyOf(selections.values());
     }
 
     Selection confirm(String eventId, String actor, Purpose purpose, List<Item> items) {

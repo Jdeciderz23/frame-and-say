@@ -11,6 +11,7 @@ export interface AlbumPhoto {
   photoId: string
   photoVersionId: string
   thumbnailAvailable: boolean
+  subjectRevision: number
 }
 
 export class AlbumRequestError extends Error {

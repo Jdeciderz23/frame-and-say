@@ -255,6 +255,27 @@ paths:
   /api/events/{eventId}/confirmed-selections:
     parameters:
       - $ref: '#/components/parameters/EventId'
+    get:
+      operationId: listConfirmedSelections
+      summary: 活动成员核对本活动已确认的清单
+      description: >-
+        发起人可读取确认时保存的用途、版本、顺序和名单修订。普通成员仅收到原用途中仍符合分享条件、
+        版本仍为当前版本且名单修订相同的条目，保留原相对顺序。没有可见条目的清单从成员响应中省略。
+        导出仍按完整清单独立复核。
+      x-implementation-status: implemented
+      responses:
+        '200':
+          description: 当前身份可核对的清单，可为空数组
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConfirmedSelection'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       operationId: confirmSelectionForExport
       summary: 发起人确认本次交付清单
