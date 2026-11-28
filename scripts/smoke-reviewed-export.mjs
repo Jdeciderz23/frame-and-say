@@ -51,8 +51,11 @@ function readSmallTestZip(bytes) {
 }
 
 if (phase === 'verify') {
-  const { download } = JSON.parse(readFileSync(statePath, 'utf8'));
+  const { download, list, selection } = JSON.parse(readFileSync(statePath, 'utf8'));
   await assertInvalidated(download);
+  assert.deepEqual(await (await request(list)).json(), [selection]);
+  assert.deepEqual(await (await request(list, { token: participant })).json(),
+    [{ ...selection, items: selection.items.slice(0, 1) }]);
   console.log('The persisted confirmed list still refuses delivery after the restart');
 } else {
   const event = await (await request('/api/events', {
@@ -102,7 +105,7 @@ if (phase === 'verify') {
   assert.deepEqual(readSmallTestZip(bytes), photos.map((photo, index) => [photo.photoVersionId + '.png', synthetic[index]]));
   await decide(photos[1], 'INTERNAL_SHARE', 'DENY');
   await assertInvalidated(download);
-  writeFileSync(statePath, JSON.stringify({ download }), { mode: 0o600 });
+  writeFileSync(statePath, JSON.stringify({ download, list: root + '/confirmed-selections', selection }), { mode: 0o600 });
   writeFileSync(statePath + '.zip', bytes, { mode: 0o600 });
   console.log('Export contained exactly the reviewed originals. Revoking internal permission blocked the entire ZIP.');
 }

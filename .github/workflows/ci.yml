@@ -60,13 +60,23 @@ jobs:
         run: node --env-file=.env scripts/smoke-photo-storage.mjs create "$RUNNER_TEMP/frame-say-photos.json" --compose
       - name: Verify reviewed delivery and consent revocation
         run: node --env-file=.env scripts/smoke-reviewed-export.mjs create "$RUNNER_TEMP/frame-say-export.json"
+      - name: Verify approved deletion hides versions, updates progress and invalidates delivery
+        run: node --env-file=.env scripts/smoke-photo-deletion.mjs create "$RUNNER_TEMP/frame-say-deletion.json"
+      - name: Verify frontend stays available during a backend outage
+        run: |
+          docker compose --profile app stop backend
+          curl --fail --silent --show-error --max-time 5 http://127.0.0.1:5173/ --output /dev/null
+          status=$(curl --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' http://127.0.0.1:5173/api/health)
+          echo "Health endpoint during backend outage: HTTP $status"
+          test "$status" = 502 || test "$status" = 504
       - name: Restart MySQL and the backend and verify persistence
         run: |
-          docker compose --profile app stop frontend backend mysql
+          docker compose --profile app stop mysql
           docker compose --profile app up -d --wait --wait-timeout 150
           node --env-file=.env scripts/smoke-compose.mjs verify "$RUNNER_TEMP/frame-say-smoke.json"
           node --env-file=.env scripts/smoke-photo-storage.mjs verify "$RUNNER_TEMP/frame-say-photos.json" --compose
           node --env-file=.env scripts/smoke-reviewed-export.mjs verify "$RUNNER_TEMP/frame-say-export.json"
+          node --env-file=.env scripts/smoke-photo-deletion.mjs verify "$RUNNER_TEMP/frame-say-deletion.json"
       - if: failure()
         run: docker compose --profile app logs --no-color --tail 80
       - if: always()

@@ -9,7 +9,7 @@
 - **个人偏好**：每位成员可以查看和修改自己的照片评分。
 - **发布授权**：出镜者按照片版本、出镜名单和分享用途确认授权。名单变更后需要重新确认。
 
-网页提供项目主页和连接检查，以上业务可以通过 REST API 体验。见 [API 文档](docs/api/openapi.yaml)和[本地体验步骤](docs/api/local-walkthrough.md)。
+在网页主导航打开「我的活动」，连接本机联调身份后即可创建活动、查看已加入的活动，点击活动名称可进入相册。服务连接可在「服务连接」页检查。见 [API 文档](docs/api/openapi.yaml)和[本地体验步骤](docs/api/local-walkthrough.md)。
 
 ## 本地运行
 
@@ -39,3 +39,7 @@ docker compose up -d --wait mysql
 ```
 
 该命令运行前端测试、类型检查和生产构建，并执行后端测试与打包。更多模块和数据设计见 [技术架构](docs/03-architecture.md)。
+
+## 验证连接恢复
+
+安装依赖、打包后，在两个终端分别运行 `pnpm --dir frontend dev` 和 `node scripts/dev.mjs --backend-only`。保持前端终端运行，只在后端终端按 `Ctrl+C`，即可在浏览器检查失败提示和重试。恢复后访问「我的活动」并验证能打开相册。完整步骤及持久化验证见[连接恢复验收](docs/api/local-walkthrough.md#验证连接失败与恢复)。

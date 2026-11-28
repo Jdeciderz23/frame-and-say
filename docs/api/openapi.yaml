@@ -34,6 +34,12 @@ paths:
   /api/events:
     post:
       operationId: createEvent
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema: { type: string, format: uuid }
+          description: 同一成员以同一标识和相同输入重试时返回原创建结果。省略标识时每次创建独立活动。
       summary: 创建活动并将调用者设为该活动的发起人
       x-implementation-status: implemented
       x-task-id: W2-01
@@ -54,6 +60,8 @@ paths:
                 desiredPhotoCount:
                   $ref: '#/components/schemas/PhotoCount'
       responses:
+        '409':
+          description: 此成员已用相同请求标识提交不同名称或选片目标
         '201':
           description: 活动及其发起人成员关系创建成功
           content:
@@ -80,6 +88,33 @@ paths:
                   $ref: '#/components/schemas/Event'
         '401':
           $ref: '#/components/responses/Unauthenticated'
+  /api/events/{eventId}/selection-target:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    put:
+      operationId: setSelectionTarget
+      summary: 发起人设置或调整本活动的目标选片数
+      x-implementation-status: implemented
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [desiredPhotoCount]
+              properties:
+                desiredPhotoCount:
+                  $ref: '#/components/schemas/PhotoCount'
+      responses:
+        '204':
+          description: 已保存，通过活动列表读取当前值
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/events/{eventId}/members:
     parameters:
       - $ref: '#/components/parameters/EventId'
@@ -132,9 +167,115 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/events/{eventId}/photo-deletion-requests:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      operationId: listPhotoDeletionRequests
+      summary: 活动发起人查询待处理和已批准的照片删除申请
+      x-implementation-status: implemented
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: 按申请时间倒序返回本活动记录
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PhotoDeletionRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/events/{eventId}/photos/{photoId}/deletion-request:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - $ref: '#/components/parameters/PhotoId'
+    post:
+      operationId: requestPhotoDeletion
+      summary: 原上传者申请删除活动照片
+      x-implementation-status: implemented
+      description: 原上传者须仍是活动成员。重复申请返回同一记录，处理前照片仍可访问。无上传者记录的旧照片无法申请。
+      responses:
+        '200':
+          $ref: '#/components/responses/PhotoDeletionRecord'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      operationId: getPhotoDeletionRequest
+      summary: 申请者或活动发起人核对处置记录
+      x-implementation-status: implemented
+      responses:
+        '200':
+          $ref: '#/components/responses/PhotoDeletionRecord'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/events/{eventId}/photos/{photoId}/deletion-request/approval:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - $ref: '#/components/parameters/PhotoId'
+    put:
+      operationId: approvePhotoDeletion
+      summary: 活动发起人批准已有的删除申请
+      x-implementation-status: implemented
+      description: 批准后相册与分享进度隐藏该照片，所有历史和当前版本链接失效，包含其版本的确认清单拒绝导出。重复批准返回原记录。
+      responses:
+        '200':
+          $ref: '#/components/responses/PhotoDeletionRecord'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/events/{eventId}/confirmed-selections:
     parameters:
       - $ref: '#/components/parameters/EventId'
+    get:
+      operationId: listConfirmedSelections
+      summary: 活动成员核对本活动已确认的清单
+      description: >-
+        发起人可读取确认时保存的用途、版本、顺序和名单修订。普通成员仅收到原用途中仍符合分享条件、
+        版本仍为当前版本且名单修订相同的条目，保留原相对顺序。没有可见条目的清单从成员响应中省略。
+        导出仍按完整清单独立复核。
+      x-implementation-status: implemented
+      responses:
+        '200':
+          description: 当前身份可核对的清单，可为空数组
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConfirmedSelection'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
       operationId: confirmSelectionForExport
       summary: 发起人确认本次交付清单
@@ -290,6 +431,94 @@ paths:
             application/problem+json:
               schema:
                 $ref: '#/components/schemas/Problem'
+        '415':
+          $ref: '#/components/responses/UnsupportedImage'
+        '503':
+          $ref: '#/components/responses/StorageUnavailable'
+  /api/events/{eventId}/photos/versions/{photoVersionId}/metadata:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - $ref: '#/components/parameters/PhotoVersionPath'
+    get:
+      operationId: resolvePhotoVersion
+      summary: 按版本 ID 定位活动内的照片
+      description: 用于恢复曾只携带版本 ID 的相册链接。活动成员可以定位当前或历史版本。
+      responses:
+        '200':
+          description: 对应版本及所属照片
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoVersionEntry'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/events/{eventId}/photos/{photoId}/versions:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+      - $ref: '#/components/parameters/PhotoId'
+    get:
+      operationId: listPhotoVersions
+      summary: 活动成员查看同一照片的版本历史
+      description: 版本按编号从大到小返回，第一项为当前版本。canCreateVersion 表示当前身份可提交新版本。
+      responses:
+        '200':
+          description: 版本历史与当前身份的写入能力
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoVersionHistory'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: createPhotoVersion
+      summary: 在同一照片下保存独立的新版本
+      description: >-
+        原上传者或本活动发起人可以提交，且必须仍为活动成员。没有上传者记录的旧照片只允许发起人提交。
+        提交时发送当前版本 ID 与一张 JPEG 或 PNG，文件、请求及像素限制同首次上传。
+        新版本从未确认的名单开始，既有版本文件、名单、偏好与授权保留。
+        当前版本变化时返回 409，调用方应刷新版本列表并请用户核对，不自动重试。
+        网关返回 502 或 504、或连接中断时，服务端可能已保存版本。调用方应先读取版本列表确认结果。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [baseVersionId, file]
+              properties:
+                baseVersionId:
+                  type: string
+                  format: uuid
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: 新版本及受保护的缩略图地址
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PhotoVersionEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          description: 文件、multipart 请求体或图像尺寸超过限制
         '415':
           $ref: '#/components/responses/UnsupportedImage'
         '503':
@@ -644,8 +873,12 @@ components:
       minimum: 0
     Event:
       type: object
-      required: [id, name]
+      required: [id, name, memberRole]
       properties:
+        memberRole:
+          type: string
+          enum: [ORGANIZER, PARTICIPANT]
+          description: 当前调用者在这项活动中的角色
         id:
           type: string
           format: uuid
@@ -667,6 +900,50 @@ components:
         role:
           type: string
           enum: [ORGANIZER, PARTICIPANT]
+    PhotoDeletionRequest:
+      type: object
+      required: [photoId, eventId, status, requestedBy, requestedAt, processedBy, processedAt]
+      properties:
+        photoId:
+          type: string
+          format: uuid
+        eventId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, APPROVED]
+        requestedBy:
+          type: string
+        requestedAt:
+          type: string
+          format: date-time
+        processedBy:
+          type: string
+          nullable: true
+        processedAt:
+          type: string
+          format: date-time
+          nullable: true
+    PhotoVersionEntry:
+      type: object
+      required: [versionNumber, photo]
+      properties:
+        versionNumber:
+          type: integer
+          minimum: 1
+        photo:
+          $ref: '#/components/schemas/PhotoMetadata'
+    PhotoVersionHistory:
+      type: object
+      required: [canCreateVersion, versions]
+      properties:
+        canCreateVersion:
+          type: boolean
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PhotoVersionEntry'
     ReviewedPhoto:
       type: object
       additionalProperties: false
@@ -834,6 +1111,12 @@ components:
         instance:
           type: string
   responses:
+    PhotoDeletionRecord:
+      description: 删除申请及处置记录
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PhotoDeletionRequest'
     BadRequest:
       description: 参数、名单或文件信息不合法
       content:

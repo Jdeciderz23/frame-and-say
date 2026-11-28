@@ -33,7 +33,7 @@
 
 基础配置将 `app.bootstrap.enabled` 设为 false；demo、local、test 启用。启用时，所有实际使用的 profile 都必须属于这三类；未显式激活 profile 时检查默认 profile。其他环境默认拒绝演示令牌，强制启用则启动失败，混合 `production,demo` 也不能启用。格式错误、相同的双身份令牌和缺少令牌继续按现有规则处理。
 
-这项限制不提供正式登录。第三方账号、会话过期、注销、正式账号目录和邀请仍按[身份与邀请方案](identity-invitations-proposal.md)评审。
+这项限制不提供正式登录。第三方账号、会话过期、注销、正式账号目录和邀请仍按[身份与邀请方案](identity-invitations.md)评审。
 
 ## 验证入口
 

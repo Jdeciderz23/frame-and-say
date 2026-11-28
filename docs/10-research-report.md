@@ -256,4 +256,4 @@ Pixieset 的官方帮助说明介绍了收藏清单、照片备注，以及下�
 | 微软，2019-10-09；25 国调查中的受访青少年 | 42% 对父母在社交媒体分享与本人有关的内容表示不同程度的介意。[研究发布方](https://blogs.microsoft.com/on-the-issues/2019/10/09/teens-say-parents-share-too-much-about-them-online-microsoft-study/) | US-06 让出镜者分别决定群内和公开用途。亲子分享与同伴选片的关系及用途划分仍需核实。 |
 | 英国安全互联网中心委托 Censuswide，2019；英国 2,004 名 8–17 岁受访者 | 51% 认为朋友在标记自己或分享涉及自己的照片、视频前应先征询。[调查发布方](https://saferinternet.org.uk/safer-internet-day/safer-internet-day-2019/permission-to-share-press-release) | US-06、US-07 设置本人确认入口及组织者进度视图。能展示多细的状态仍要做隐私走查。 |
 
-首批故事保留第一人称的设计场景。公平性函数、性能阈值和撤回时限属于团队提案。后续在取得同意后，以匿名纪要编号补充或修订相应故事。[故事与验收](11-srs-draft.md) · [公开资料与后续访谈 #6](https://github.com/Jdeciderz23/frame-and-say/issues/6)
+首批故事保留第一人称的设计场景。公平性函数、性能阈值和撤回时限属于团队提案。后续在取得同意后，以匿名纪要编号补充或修订相应故事。[故事与验收](11-srs.md) · [公开资料与后续访谈 #6](https://github.com/Jdeciderz23/frame-and-say/issues/6)

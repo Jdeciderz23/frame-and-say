@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { readConsent, saveConsent, type MyConsent } from './consent'
 
-const photo = { photoId: 'photo', photoVersionId: 'version', thumbnailAvailable: true }
+const photo = { photoId: 'photo', photoVersionId: 'version', thumbnailAvailable: true, subjectRevision: 1 }
 const token = 'participant-token'
 const signal = new AbortController().signal
 const pending: MyConsent = {

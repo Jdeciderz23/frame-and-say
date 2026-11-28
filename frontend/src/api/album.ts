@@ -1,12 +1,17 @@
+export const localTokenKey = 'frame-and-say:local-token'
+
 export interface AlbumEvent {
+  memberRole: 'ORGANIZER' | 'PARTICIPANT'
   id: string
   name: string
+  desiredPhotoCount?: number | null
 }
 
 export interface AlbumPhoto {
   photoId: string
   photoVersionId: string
   thumbnailAvailable: boolean
+  subjectRevision: number
 }
 
 export class AlbumRequestError extends Error {
@@ -33,12 +38,46 @@ export function eventPath(eventId: string) {
   return `/api/events/${encodeURIComponent(eventId)}`
 }
 
+export async function setSelectionTarget(eventId: string, desiredPhotoCount: number, token: string, signal: AbortSignal) {
+  await albumRequest(`${eventPath(eventId)}/selection-target`, token, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ desiredPhotoCount }),
+    signal,
+  })
+}
+
 export function photoPath(eventId: string, photoId: string) {
   return `${eventPath(eventId)}/photos/${encodeURIComponent(photoId)}`
 }
 
+function isAlbumEvent(value: unknown): value is AlbumEvent {
+  return typeof value === 'object' && value !== null
+    && 'id' in value && typeof value.id === 'string' && value.id.length > 0
+    && 'name' in value && typeof value.name === 'string'
+}
+
 export async function listEvents(token: string, signal: AbortSignal): Promise<AlbumEvent[]> {
-  return (await albumRequest('/api/events', token, { signal })).json()
+  const events: unknown = await (await albumRequest('/api/events', token, { signal })).json()
+  if (!Array.isArray(events) || !events.every(isAlbumEvent)) throw new Error('活动列表响应无效')
+  return events
+}
+
+export async function createEvent(
+  input: { name: string; desiredPhotoCount?: number },
+  token: string,
+  signal: AbortSignal,
+  requestId: string = crypto.randomUUID(),
+): Promise<AlbumEvent> {
+  const response = await albumRequest('/api/events', token, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestId },
+    body: JSON.stringify({ name: input.name, desiredPhotoCount: input.desiredPhotoCount }),
+    signal,
+  })
+  const event: unknown = await response.json()
+  if (!isAlbumEvent(event)) throw new Error('创建响应缺少活动信息')
+  return event
 }
 
 export async function listPhotos(eventId: string, token: string, signal: AbortSignal): Promise<AlbumPhoto[]> {

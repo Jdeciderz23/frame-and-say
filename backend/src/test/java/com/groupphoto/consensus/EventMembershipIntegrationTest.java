@@ -3,10 +3,16 @@ package com.groupphoto.consensus;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.groupphoto.consensus.support.SyntheticActors;
@@ -22,6 +28,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:event_membership_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
@@ -40,6 +47,56 @@ class EventMembershipIntegrationTest {
     private ObjectMapper json;
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private TransactionTemplate transactions;
+
+    @Test
+    void retryUsesTheFirstCreationEvenWhileItsTransactionIsPending() throws Exception {
+        String key = UUID.randomUUID().toString();
+        var inserted = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var retryStarted = new CountDownLatch(1);
+        try (var workers = Executors.newFixedThreadPool(2)) {
+            var original = workers.submit(() -> transactions.execute(tx -> {
+                try {
+                    String id = keyedEvent(ORGANIZER, key, "pending creation", 201);
+                    inserted.countDown();
+                    if (!release.await(10, TimeUnit.SECONDS)) throw new AssertionError("Commit was not released");
+                    return id;
+                } catch (Exception e) {
+                    throw new AssertionError(e);
+                }
+            }));
+            try {
+                assertThat(inserted.await(10, TimeUnit.SECONDS)).isTrue();
+                mvc.perform(get("/api/events").header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                        .andExpect(jsonPath("$[?(@.name == 'pending creation')]").isEmpty());
+                var retry = workers.submit(() -> {
+                    retryStarted.countDown();
+                    return keyedEvent(ORGANIZER, key, "pending creation", 201);
+                });
+                assertThat(retryStarted.await(5, TimeUnit.SECONDS)).isTrue();
+                release.countDown();
+                String eventId = original.get(10, TimeUnit.SECONDS);
+                assertThat(retry.get(10, TimeUnit.SECONDS)).isEqualTo(eventId);
+                assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM events WHERE name = ?", Integer.class,
+                        "pending creation")).isEqualTo(1);
+                keyedEvent(ORGANIZER, key, "changed input", 409);
+                assertThat(keyedEvent(PARTICIPANT, key, "another member", 201)).isNotEqualTo(eventId);
+            } finally {
+                release.countDown();
+            }
+        }
+    }
+
+    private String keyedEvent(String token, String key, String name, int expectedStatus) throws Exception {
+        String body = mvc.perform(post("/api/events").header(HttpHeaders.AUTHORIZATION, token)
+                        .header("Idempotency-Key", key).contentType(MediaType.APPLICATION_JSON)
+                        .content(json.createObjectNode().put("name", name).toString()))
+                .andExpect(status().is(expectedStatus)).andReturn().getResponse().getContentAsString();
+        return json.readTree(body).path("id").asText();
+    }
 
     @Test
     void requiresBearerAndRejectsTheClientSupplyingAnActor() throws Exception {
@@ -132,6 +189,52 @@ class EventMembershipIntegrationTest {
         Long countBefore = jdbc.queryForObject("SELECT COUNT(*) FROM events", Long.class);
         postEvent(name, desiredPhotoCount).andExpect(status().isBadRequest());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM events", Long.class)).isEqualTo(countBefore);
+    }
+
+    @Test
+    void onlyTheOrganizerOfThisEventCanSetItsTarget() throws Exception {
+        String eventId = createEvent("秋游", 3);
+        String targetPath = "/api/events/" + eventId + "/selection-target";
+        mvc.perform(put(targetPath).contentType(MediaType.APPLICATION_JSON).content("{\"desiredPhotoCount\":4}"))
+                .andExpect(status().isUnauthorized());
+        putTarget(eventId, PARTICIPANT, "{\"desiredPhotoCount\":2}").andExpect(status().isForbidden());
+        addMember(eventId, ORGANIZER, "participant", 204);
+
+        putTarget(eventId, ORGANIZER, "{\"desiredPhotoCount\":4}").andExpect(status().isNoContent());
+        putTarget(eventId, PARTICIPANT, "{\"desiredPhotoCount\":2}").andExpect(status().isForbidden());
+        String item = "$[?(@.id == '" + eventId + "')]";
+        mvc.perform(get("/api/events").header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(jsonPath(item + ".memberRole").value("ORGANIZER"))
+                .andExpect(jsonPath(item + ".desiredPhotoCount").value(4));
+        mvc.perform(get("/api/events").header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(jsonPath(item + ".memberRole").value("PARTICIPANT"))
+                .andExpect(jsonPath(item + ".desiredPhotoCount").value(4));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"desiredPhotoCount\":null}", "{\"desiredPhotoCount\":0}",
+            "{\"desiredPhotoCount\":101}", "{\"desiredPhotoCount\":1.5}"})
+    void rejectsInvalidTargetUpdatesWithoutChangingTheStoredValue(String body) throws Exception {
+        String eventId = createEvent("目标边界", 3);
+        putTarget(eventId, ORGANIZER, body).andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT desired_photo_count FROM events WHERE id = ?", Integer.class, eventId))
+                .isEqualTo(3);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 100})
+    void acceptsEitherLimitAndRepeatedTargetUpdates(int count) throws Exception {
+        String eventId = createEvent("目标边界", 3);
+        String body = json.createObjectNode().put("desiredPhotoCount", count).toString();
+        putTarget(eventId, ORGANIZER, body).andExpect(status().isNoContent());
+        putTarget(eventId, ORGANIZER, body).andExpect(status().isNoContent());
+        assertThat(jdbc.queryForObject("SELECT desired_photo_count FROM events WHERE id = ?", Integer.class, eventId))
+                .isEqualTo(count);
+    }
+
+    private ResultActions putTarget(String eventId, String token, String body) throws Exception {
+        return mvc.perform(put("/api/events/{id}/selection-target", eventId)
+                .header(HttpHeaders.AUTHORIZATION, token).contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
     private ResultActions postEvent(String name, int desiredPhotoCount) throws Exception {

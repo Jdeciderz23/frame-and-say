@@ -8,6 +8,7 @@ import com.groupphoto.consensus.membership.EventMembership;
 import com.groupphoto.consensus.photo.PhotoCatalog;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
@@ -32,7 +33,9 @@ public class ConsentService {
 
     record MyConsent(String photoVersionId, long subjectRevision, Purpose purpose, Status decision, boolean canDecide) {}
     record PhotoProgress(String photoId, String photoVersionId, boolean eligible) {}
-    private record VersionConsent(String photoId, String photoVersionId, boolean rosterConfirmed, Status decision) {}
+    private record VersionConsent(String photoId, String photoVersionId, long revision, boolean rosterConfirmed,
+                                  Status decision) {}
+    private record CurrentProgress(PhotoProgress progress, long revision) {}
 
     MyConsent read(String eventId, String photoId, String versionId, String actorId, Purpose purpose) {
         membership.requireMember(eventId, actorId);
@@ -71,10 +74,21 @@ public class ConsentService {
 
     List<PhotoProgress> progress(String eventId, String actorId, Purpose purpose) {
         membership.requireOrganizer(eventId, actorId);
+        return currentProgress(eventId, purpose).stream().map(CurrentProgress::progress).toList();
+    }
+
+    public Map<String, Long> eligibleRevisions(String eventId, String actorId, Purpose purpose) {
+        membership.requireMember(eventId, actorId);
+        return currentProgress(eventId, purpose).stream().filter(row -> row.progress().eligible())
+                .collect(Collectors.toMap(row -> row.progress().photoVersionId(), CurrentProgress::revision));
+    }
+
+    private List<CurrentProgress> currentProgress(String eventId, Purpose purpose) {
         var rows = jdbc.sql("""
-                SELECT v.photo_id, v.id AS photo_version_id, v.roster_confirmed,
+                SELECT v.photo_id, v.id AS photo_version_id, v.subject_revision, v.roster_confirmed,
                     CASE WHEN s.user_id IS NOT NULL THEN COALESCE(c.decision, 'PENDING') END AS decision
                 FROM photo_versions v
+                JOIN photos p ON p.id = v.photo_id AND p.event_id = v.event_id AND p.deleted_at IS NULL
                 LEFT JOIN photo_subjects s ON s.photo_version_id = v.id AND s.subject_revision = v.subject_revision
                 LEFT JOIN photo_consents c ON c.photo_version_id = s.photo_version_id
                     AND c.subject_revision = s.subject_revision AND c.user_id = s.user_id AND c.purpose = :purpose
@@ -87,7 +101,8 @@ public class ConsentService {
                 .query((row, index) -> {
                     String decision = row.getString("decision");
                     return new VersionConsent(row.getString("photo_id"), row.getString("photo_version_id"),
-                            row.getBoolean("roster_confirmed"), decision == null ? null : Status.valueOf(decision));
+                            row.getLong("subject_revision"), row.getBoolean("roster_confirmed"),
+                            decision == null ? null : Status.valueOf(decision));
                 }).list();
 
         return rows.stream()
@@ -96,7 +111,8 @@ public class ConsentService {
                     var version = versionRows.getFirst();
                     var required = versionRows.stream().map(VersionConsent::decision).filter(Objects::nonNull).toList();
                     boolean eligible = Publications.evaluate(version.rosterConfirmed(), required).eligible();
-                    return new PhotoProgress(version.photoId(), version.photoVersionId(), eligible);
+                    return new CurrentProgress(new PhotoProgress(version.photoId(), version.photoVersionId(), eligible),
+                            version.revision());
                 }).toList();
     }
 

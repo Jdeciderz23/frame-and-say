@@ -5,6 +5,7 @@ import static com.groupphoto.consensus.support.SyntheticActors.ORGANIZER_PROPERT
 import static com.groupphoto.consensus.support.SyntheticActors.PARTICIPANT;
 import static com.groupphoto.consensus.support.SyntheticActors.PARTICIPANT_PROPERTY;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItem;
 import static org.mockito.Mockito.doAnswer;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -30,8 +31,8 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -56,7 +57,6 @@ class ReviewedPhotoExportIntegrationTest {
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
-    @Autowired JdbcTemplate jdbc;
     @MockitoSpyBean LocalPhotoStorage storage;
 
     @Test
@@ -90,6 +90,67 @@ class ReviewedPhotoExportIntegrationTest {
 
         decide(second, INTERNAL, "DENY");
         assertInvalidated(mvc.perform(get(download).param("purpose", PUBLIC).header(HttpHeaders.AUTHORIZATION, ORGANIZER)));
+    }
+
+    @Test
+    void preservesConfirmedVersionsAcrossRealUploadsAndFiltersTheMemberView() throws Exception {
+        String event = event();
+        String selections = "/api/events/" + event + "/confirmed-selections";
+        Photo first = upload(event, "png", 12);
+        Photo second = upload(event, "png", 20);
+        roster(first, 0, "participant");
+        decide(first, INTERNAL, "ALLOW");
+        roster(second, 0);
+        String download = confirm(event, second, first);
+        var confirmed = json.readTree(mvc.perform(get(selections).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].purpose").value(INTERNAL))
+                .andExpect(jsonPath("$[0].items[0].photoVersionId").value(second.versionId()))
+                .andExpect(jsonPath("$[0].items[1].photoVersionId").value(first.versionId()))
+                .andReturn().getResponse().getContentAsString()).get(0);
+        mvc.perform(get(selections).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].items.length()").value(2));
+
+        Photo edited = uploadVersion(first);
+        roster(edited, 0, "participant");
+        decide(edited, INTERNAL, "ALLOW");
+        mvc.perform(get(selections).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isOk()).andExpect(content().json("[" + confirmed + "]", JsonCompareMode.STRICT));
+        mvc.perform(get(selections).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].items.length()").value(1))
+                .andExpect(jsonPath("$[0].items[0].photoVersionId").value(second.versionId()));
+        assertInvalidated(mvc.perform(get(download).header(HttpHeaders.AUTHORIZATION, ORGANIZER)));
+
+        String next = confirm(event, second, edited);
+        assertThat(next).isNotEqualTo(download);
+        mvc.perform(get(next).header(HttpHeaders.AUTHORIZATION, ORGANIZER)).andExpect(status().isOk());
+        mvc.perform(get(selections).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[*].items[*].photoVersionId", hasItem(edited.versionId())));
+    }
+
+    @Test
+    void limitsVerificationToTheEventAndCurrentlyPermittedPurposeAndRoster() throws Exception {
+        String event = event();
+        String selections = "/api/events/" + event + "/confirmed-selections";
+        Photo photo = upload(event, "png", 12);
+        roster(photo, 0, "participant");
+        decide(photo, INTERNAL, "ALLOW");
+        decide(photo, PUBLIC, "ALLOW");
+        submitConfirmation(event, PARTICIPANT, photo).andExpect(status().isForbidden());
+        confirm(event, photo);
+        decide(photo, INTERNAL, "DENY");
+        mvc.perform(get(selections).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk()).andExpect(content().json("[]"));
+        decide(photo, INTERNAL, "ALLOW");
+        roster(photo, 1);
+        mvc.perform(get(selections).header(HttpHeaders.AUTHORIZATION, PARTICIPANT))
+                .andExpect(status().isOk()).andExpect(content().json("[]"));
+        mvc.perform(get(selections)).andExpect(status().isUnauthorized());
+        String otherSelections = "/api/events/" + organizerOnlyEvent() + "/confirmed-selections";
+        mvc.perform(get(otherSelections).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isOk()).andExpect(content().json("[]"));
+        mvc.perform(get(otherSelections).header(HttpHeaders.AUTHORIZATION, PARTICIPANT)).andExpect(status().isForbidden());
     }
 
     @Test
@@ -127,11 +188,7 @@ class ReviewedPhotoExportIntegrationTest {
                 .andExpect(status().isNotFound())
                 .andExpect(header().doesNotExist(HttpHeaders.CONTENT_DISPOSITION));
 
-        // A fixture marks a later version as current without depending on the version-upload feature.
-        jdbc.update("""
-                INSERT INTO photo_versions (id, photo_id, event_id, version_number, media_type)
-                VALUES (?, ?, ?, 2, 'image/png')
-                """, UUID.randomUUID().toString(), second.photoId(), event);
+        uploadVersion(second);
         assertInvalidated(mvc.perform(get(download).header(HttpHeaders.AUTHORIZATION, ORGANIZER)));
 
         String rosterOnly = confirm(event, first);
@@ -170,11 +227,15 @@ class ReviewedPhotoExportIntegrationTest {
                 .andExpect(jsonPath("$.detail").value("The confirmed selection is no longer valid; review it again"));
     }
 
-    private String event() throws Exception {
+    private String organizerOnlyEvent() throws Exception {
         String body = mvc.perform(post("/api/events").header(HttpHeaders.AUTHORIZATION, ORGANIZER)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Reviewed export\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
-        String event = json.readTree(body).required("id").asText();
+        return json.readTree(body).required("id").asText();
+    }
+
+    private String event() throws Exception {
+        String event = organizerOnlyEvent();
         mvc.perform(post("/api/events/{id}/members", event).header(HttpHeaders.AUTHORIZATION, ORGANIZER)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"userId\":\"participant\"}"))
                 .andExpect(status().isNoContent());
@@ -190,6 +251,16 @@ class ReviewedPhotoExportIntegrationTest {
         var payload = json.readTree(body);
         String photo = payload.required("photoId").asText();
         return new Photo(path + "/" + photo, photo, payload.required("photoVersionId").asText(), bytes);
+    }
+
+    private Photo uploadVersion(Photo base) throws Exception {
+        byte[] bytes = SyntheticImages.image("png", 30, 12);
+        var file = new MockMultipartFile("file", "edit.png", "image/png", bytes);
+        String response = mvc.perform(multipart(base.resource() + "/versions").file(file)
+                        .param("baseVersionId", base.versionId()).header(HttpHeaders.AUTHORIZATION, ORGANIZER))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        String version = json.readTree(response).required("photo").required("photoVersionId").asText();
+        return new Photo(base.resource(), base.photoId(), version, bytes);
     }
 
     private void roster(Photo photo, long revision, String... users) throws Exception {
@@ -211,12 +282,16 @@ class ReviewedPhotoExportIntegrationTest {
     }
 
     private ResultActions submitConfirmation(String event, Photo... photos) throws Exception {
+        return submitConfirmation(event, ORGANIZER, photos);
+    }
+
+    private ResultActions submitConfirmation(String event, String actor, Photo... photos) throws Exception {
         var body = json.createObjectNode().put("purpose", INTERNAL);
         var items = body.putArray("items");
         for (Photo photo : photos) {
             items.addObject().put("photoId", photo.photoId()).put("photoVersionId", photo.versionId()).put("subjectRevision", 1);
         }
-        return mvc.perform(post("/api/events/" + event + "/confirmed-selections").header(HttpHeaders.AUTHORIZATION, ORGANIZER)
+        return mvc.perform(post("/api/events/" + event + "/confirmed-selections").header(HttpHeaders.AUTHORIZATION, actor)
                 .contentType(MediaType.APPLICATION_JSON).content(body.toString()));
     }
 

@@ -7,6 +7,7 @@
     </RouterLink>
     <nav aria-label="主导航">
       <RouterLink to="/" class="nav-link">项目首页</RouterLink>
+      <RouterLink to="/events" class="nav-link">我的活动</RouterLink>
       <RouterLink to="/health" class="nav-link">服务连接</RouterLink>
     </nav>
   </header>
