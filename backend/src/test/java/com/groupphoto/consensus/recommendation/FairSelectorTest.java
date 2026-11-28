@@ -151,6 +151,66 @@ class FairSelectorTest {
         assertThat(internal).isNotEqualTo(external);
     }
 
+    /**
+     * #35 验收场景：一个用途（INTERNAL_SHARE）、目标两张、四个候选版本。
+     *
+     * <p>两个已获全员许可（ELIGIBLE）、一个待确认（CONSENT_PENDING）、一个被拒且评分最高
+     * （CONSENT_DENIED，其评分总和最高）。两次运行只选两张已获许可版本、顺序一致，
+     * 被拒与待确认的高分图均被排除。
+     */
+    @Test
+    void issue35TwoEligibleOfFourVersionsAreSelectedDeterministically() {
+        List<String> members = List.of("member-a", "member-b", "member-c");
+        SelectionInput input = new SelectionInput(
+                "event-35", Purpose.INTERNAL_SHARE, 2,
+                members.stream().map(EventMember::new).toList(),
+                List.of(
+                        new Candidate("photo-1", "v1", 3, new Eligibility(true, Reason.ELIGIBLE)),
+                        new Candidate("photo-2", "v2", 3, new Eligibility(true, Reason.ELIGIBLE)),
+                        new Candidate("photo-3", "v3", 3, new Eligibility(false, Reason.CONSENT_PENDING)),
+                        new Candidate("photo-4", "v4", 3, new Eligibility(false, Reason.CONSENT_DENIED))),
+                List.of(
+                        // V1 全员许可 [1,0,0]
+                        new Preference("member-a", "v1", 1),
+                        new Preference("member-b", "v1", 0),
+                        new Preference("member-c", "v1", 0),
+                        // V2 全员许可 [0,1,0]
+                        new Preference("member-a", "v2", 0),
+                        new Preference("member-b", "v2", 1),
+                        new Preference("member-c", "v2", 0),
+                        // V3 待确认 [1,1,0]
+                        new Preference("member-a", "v3", 1),
+                        new Preference("member-b", "v3", 1),
+                        new Preference("member-c", "v3", 0),
+                        // V4 被拒且评分最高 [1,1,1]
+                        new Preference("member-a", "v4", 1),
+                        new Preference("member-b", "v4", 1),
+                        new Preference("member-c", "v4", 1)));
+
+        SelectionResult first = FairSelector.select(input);
+        SelectionResult second = FairSelector.select(input);
+
+        // 同样输入运行两次得到相同顺序（确定、可重复）
+        assertThat(first).isEqualTo(second);
+
+        // 只选两张已获许可版本，顺序一致
+        assertThat(first.selectedPhotoVersionIds()).containsExactly("v1", "v2");
+        assertThat(first.complete()).isTrue();
+
+        // 被拒（评分最高）与待确认的高分图均被排除
+        assertThat(first.selectedPhotoVersionIds()).doesNotContain("v3", "v4");
+
+        // 汇总原因：待确认 + 被拒合并为 AUTHORIZATION_REQUIRED，只给数量、不暴露是谁
+        assertThat(first.reasons())
+                .extracting(SelectionResult.ReasonCount::code, SelectionResult.ReasonCount::photoCount)
+                .containsExactly(tuple(ReasonCode.AUTHORIZATION_REQUIRED, 2));
+
+        // 指标：两个可选候选，最低成员效用 0，总效用 2
+        assertThat(first.metrics().eligiblePhotoCount()).isEqualTo(2);
+        assertThat(first.metrics().minimumMemberUtility()).isEqualTo(0.0);
+        assertThat(first.metrics().totalMemberUtility()).isEqualTo(2.0);
+    }
+
     @Test
     void fairSelectionSacrificesTotalUtilityToRaiseTheMinimum() {
         List<String> members = List.of("a", "b", "c");
