@@ -137,6 +137,17 @@ if (phase === 'create') {
   const latest = await request(saved.photo.thumbnailUrl, { token: participant });
   const latestThumbnail = Buffer.from(await latest.arrayBuffer());
   assert.notDeepEqual(latestThumbnail, originalThumbnail);
+  const latestVersionId = saved.photo.photoVersionId;
+  const latestRoster = await (await request(`${versions}/${latestVersionId}/subjects`, {
+    method: 'PUT', token: organizer, body: { subjectRevision: saved.photo.subjectRevision, userIds: ['participant'] },
+  })).json();
+  await request(consents, {
+    method: 'PUT', token: participant, status: 204,
+    body: { ...consent, photoVersionId: latestVersionId, subjectRevision: latestRoster.subjectRevision },
+  });
+  await request(`${resource}/preferences/me`, {
+    method: 'PUT', token: participant, status: 204, body: { photoVersionId: latestVersionId, value: 0 },
+  });
   writeFileSync(statePath, JSON.stringify({
     eventId, desiredPhotoCount, photoId: photo.photoId,
     thumbnails: [
@@ -151,13 +162,22 @@ if (phase === 'create') {
   const event = events.find((item) => item.id === eventId);
   assert.ok(event, 'Event membership must persist across restart');
   assert.equal(event.desiredPhotoCount, desiredPhotoCount, 'The saved event target must persist across restart');
-  const photos = await (await request(`/api/events/${eventId}/photos`, { token: participant })).json();
+  const root = `/api/events/${eventId}`;
+  const photos = await (await request(`${root}/photos`, { token: participant })).json();
   assert.equal(photos.find(photo => photo.photoId === photoId)?.photoVersionId, thumbnails[0].versionId);
-  const history = await (await request(`/api/events/${eventId}/photos/${photoId}/versions`, { token: participant })).json();
+  const resource = `${root}/photos/${photoId}`;
+  const history = await (await request(`${resource}/versions`, { token: participant })).json();
   assert.deepEqual(history.versions.map(item => item.photo.photoVersionId), thumbnails.map(item => item.versionId));
   for (const item of thumbnails) {
     const thumbnail = await request(item.url, { token: participant });
     assert.deepEqual(Buffer.from(await thumbnail.arrayBuffer()), Buffer.from(item.bytes, 'base64'));
   }
-  console.log('MySQL metadata and private file volume retain both photo versions across restart');
+  const query = `photoVersionId=${thumbnails[0].versionId}`;
+  const preference = await (await request(`${resource}/preferences/me?${query}`, { token: participant })).json();
+  assert.equal(preference.value, 0);
+  const consent = await (await request(`${resource}/consents/me?${query}&purpose=PUBLIC_POST`, { token: participant })).json();
+  assert.equal(consent.decision, 'ALLOW');
+  assert.equal(consent.canDecide, true);
+  await request(thumbnails[0].url, { status: 401 });
+  console.log('Activity, both photo versions, rating and consent retained across restart');
 }

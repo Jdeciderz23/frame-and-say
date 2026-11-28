@@ -39,3 +39,7 @@ docker compose up -d --wait mysql
 ```
 
 该命令运行前端测试、类型检查和生产构建，并执行后端测试与打包。更多模块和数据设计见 [技术架构](docs/03-architecture.md)。
+
+## 验证连接恢复
+
+安装依赖、打包后，在两个终端分别运行 `pnpm --dir frontend dev` 和 `node scripts/dev.mjs --backend-only`。保持前端终端运行，只在后端终端按 `Ctrl+C`，即可在浏览器检查失败提示和重试。恢复后访问「我的活动」并验证能打开相册。完整步骤及持久化验证见[连接恢复验收](docs/api/local-walkthrough.md#验证连接失败与恢复)。
