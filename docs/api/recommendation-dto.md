@@ -4,7 +4,7 @@
 
 当前状态：**输入校验、候选过滤与确定性公平选择算法已实现**。选片接口 [`POST /api/events/{eventId}/selections`](openapi.yaml) 仍为 `planned`，薄接口接线在契约确认后接入。
 
-本文件定义“应用用例交给算法什么”和“算法能返回什么”：先列当前可用的能力，再给出输入/输出契约、待确认的规则与验证方法。
+本文件定义“应用用例交给算法什么”和“算法能返回什么”：先列当前可用的能力，再给出输入/输出契约、待确认的规则与验证方法。推荐流程的顺序图见 [models/recommendation-sequence.md](../../models/recommendation-sequence.md)。
 
 ## 当前可用的能力
 
